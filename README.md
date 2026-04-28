@@ -11,6 +11,25 @@ This project implements various population genetics simulations and analysis too
 - Convergence analysis and autocorrelation studies
 - Phenotype distribution analysis
 
+## Recent Updates (Apr 2026)
+
+Work in `epistasis_equilibria/` added a focused allele-frequency equilibrium workflow:
+
+- `equilibria_allele_freq.py`
+  - Equilibrium on `[0,1]^n` for haploid/diploid settings with config-driven matrix `M` (`sigma` in YAML).
+  - Added diagnostics for:
+    - `KL(ρ_eq || ρ_neutral[M=0])`
+    - Free-fitness terms at equilibrium
+    - Weak-selection check: `N * max_g |g^T M g|`
+    - ESS quality reporting (`ESS/support_points` with labels: bad/weak/okay/good/very good)
+- `equilibria_allele_freq_viz_n2.py`
+  - Dedicated `n=2`, haploid visualization helper with:
+    - 3D surfaces for `ρ_eq`, `ρ_neutral`, and `W(x)`
+    - Comparison panels (`log(ρ_eq/ρ_neutral)`, `Δℓ`, and `logW` correlation view)
+    - Fast corner-symmetry debug output (corner values + spread metrics)
+- `equilibria_config_allele_freq_example.yaml`
+  - Example config for the new allele-frequency equilibrium tools.
+
 ## Main Components
 
 ### Core Simulation Engine
