@@ -1,0 +1,18 @@
+# Build neutral-equilibrium cache for several N values (Sigma = 0).
+#
+#   python build_neutral_cache.py --config neutral_cache_config.yaml
+#
+# Output (auto from u, v, r):
+#   cache/neutral_u0_1em4_u1_1em4_v0_1em4_v1_1em4_r0.npz
+
+neutral_cache_dir: cache
+
+N_values: [20, 30, 40, 50]
+
+# u, v, r here define the cache filename AND the dynamics being cached.
+# simplex_config.yaml must use the same u, v, r to load this file.
+u: [1.0e-4, 1.0e-4]
+v: [1.0e-4, 1.0e-4]
+r: 0.0
+
+n_jobs: -1

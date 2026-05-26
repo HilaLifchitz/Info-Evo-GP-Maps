@@ -11,6 +11,31 @@ This project implements various population genetics simulations and analysis too
 - Convergence analysis and autocorrelation studies
 - Phenotype distribution analysis
 
+## Recent Updates (May 2026)
+
+### `2loci/` — two-locus Wright–Fisher on the genotype simplex
+
+New exact Markov-chain simulator for linked two-locus dynamics on the 4-genotype simplex (00, 01, 10, 11):
+
+- **`simplex.py`** — builds the full transition matrix, evolves \(\psi(t)\) from neutral start \(\psi(0)=\varphi\), and reports:
+  - \(D_{\mathrm{KL}}(\psi(t)\|\varphi)\) in bits (information vs neutral equilibrium)
+  - Free fitness \(\mathcal{F}_N = \langle W\rangle + H/(2N)\)
+  - Mean linkage disequilibrium
+  - Optional \(F_2 = D_{\mathrm{KL}}(\psi\|\psi^*)\) (`--f2`)
+- **`build_neutral_cache.py`** + **`neutral_cache.py`** — precompute and load neutral (\(\Sigma=0\)) stationary distributions for large \(N\)
+- **`simplex_config.yaml`** — YAML-driven parameters (\(N\), \(r\), \(u\), \(v\), \(\Sigma\), sampled times, plots)
+
+See **[2loci/README.md](2loci/README.md)** for usage, formulas, and cache setup.
+
+```bash
+cd 2loci
+python build_neutral_cache.py --config neutral_cache_config.yaml
+python simplex.py --config simplex_config.yaml
+python simplex.py --debug-kl    # KL sanity checks
+```
+
+---
+
 ## Recent Updates (Apr 2026)
 
 Work in `epistasis_equilibria/` added a focused allele-frequency equilibrium workflow:
@@ -184,6 +209,17 @@ res = ld.debug_check_G_pushforward(phi_star, verbose=True)
 
 This module provides both the independent-loci analysis path and a full LD pipeline with efficient spectral evaluation for multi-timepoint information-theoretic tracking across X, P, and G.
 
+#### `2loci/simplex.py` ⭐ **New**
+
+Exact two-locus Wright–Fisher Markov chain on the **genotype simplex** (\(S=\binom{N+3}{3}\) states). Complements `Markov_2_loci.py` with a config-driven workflow focused on evolution from neutral equilibrium:
+
+- Fitness \(\omega(g)=\exp(g^\top\Sigma g)\) with configurable epistasis matrix \(\Sigma\)
+- Parallel transition-matrix construction (`ProcessPoolExecutor`)
+- Information dynamics: \(D_{\mathrm{KL}}(\psi\|\varphi)\), \(\mathcal{F}_N\), mean LD, optional \(F_2\)
+- Automatic plots saved to `2loci/plots/` (filenames encode \(r\), \(s_1\), \(s_2\), \(\varepsilon_{12}\))
+
+Full documentation: **[2loci/README.md](2loci/README.md)**
+
 #### `kl_comparison_test.py`
 Systematic comparison of different KL divergence calculation methods:
 - Compares old vs. new KL calculation methods
@@ -299,6 +335,7 @@ The `--prune` flag removes packages not listed in the file, keeping your environ
 
 ```
 Miso/
+├── 2loci/                         # Two-locus genotype simplex (simplex.py, neutral cache)
 ├── QE.py                          # Core simulation engine
 ├── Markov_1_locus.py              # Wright-Fisher Markov chain analysis
 ├── diffusion_vs_markov.py         # Markov vs diffusion comparison
