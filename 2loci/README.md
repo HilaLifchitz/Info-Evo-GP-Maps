@@ -26,7 +26,8 @@ with symmetric \(2\times2\) matrix \(\Sigma\) (\(\Sigma_{ii}=s_i\), \(\Sigma_{ij
 | File | Purpose |
 |------|---------|
 | `simplex.py` | Main driver: build transition matrix, evolve \(\psi(t)\), diagnostics, plots |
-| `simplex_config.yaml` | Runtime parameters (\(N\), \(r\), \(u\), \(v\), \(\Sigma\), sampled times) |
+| `simplex_config.yaml` | Runtime parameters for single-run `simplex.py` |
+| `eps12_sweep.py` | Sweep \(\varepsilon_{12}\); all settings in the script (no YAML) |
 | `build_neutral_cache.py` | Precompute neutral equilibria \(\varphi\) for several \(N\) |
 | `neutral_cache.py` | Cache I/O (`.npz` keyed by \(u\), \(v\), \(r\)) |
 | `neutral_cache_config.yaml` | Which \(N\) values to cache |
@@ -34,7 +35,8 @@ with symmetric \(2\times2\) matrix \(\Sigma\) (\(\Sigma_{ii}=s_i\), \(\Sigma_{ij
 Generated at runtime (not committed):
 
 - `cache/neutral_u0_..._r....npz` — neutral stationary distributions
-- `plots/information_and_f1_vs_t_*.png` — dynamics figures
+- `plots/information_and_f1_vs_t_*.png` — single-run dynamics figures
+- `plots/eps12_sweep_*_vs_t_*.png` — epistatic sweep overlay figures
 
 ## Quick start
 
@@ -47,9 +49,26 @@ python build_neutral_cache.py --config neutral_cache_config.yaml
 
 # 2. Run with selection (loads phi from cache when available)
 python simplex.py --config simplex_config.yaml
+
+# 3. Epistatic sweep (many ε₁₂ curves on one figure)
+python eps12_sweep.py
+# All sweep parameters live in SWEEP SETTINGS at top of eps12_sweep.py
 ```
 
-Edit `simplex_config.yaml` to set \(N\), recombination \(r\), mutation rates, and the epistasis matrix `sigma`. The `times` list controls which generations are sampled.
+Edit `simplex_config.yaml` for single runs with `simplex.py`. For sweeps, edit **`eps12_sweep.py`** only (`N`, `r`, `u`, `v`, `s₁`, `s₂`, `TIMES`, ε₁₂ range).
+
+## Epistatic sweep (`eps12_sweep.py`)
+
+Self-contained sweep script: fixes \(N\), \(r\), \(u\), \(v\), \(s_1\), \(s_2\) and varies \(\varepsilon_{12}\) from \(-1\) to \(+1\) (default step 0.1). Produces four overlay plots (KL and \(\mathcal{F}_N\), values and rates), one colored curve per \(\varepsilon_{12}\) with a coolwarm colorbar.
+
+**All parameters are in the `SWEEP SETTINGS` block** at the top of `eps12_sweep.py` — no YAML. The only external input is the neutral cache file matching your \((u, v, r)\).
+
+```bash
+python eps12_sweep.py
+python eps12_sweep.py --output-dir plots/my_sweep
+```
+
+Output files: `plots/eps12_sweep_kl_vs_t_r_...png`, `..._kl_rates_...`, `..._f1_vs_t_...`, `..._f1_rates_...`.
 
 ## Information dynamics
 

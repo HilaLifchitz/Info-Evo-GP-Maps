@@ -23,6 +23,7 @@ New exact Markov-chain simulator for linked two-locus dynamics on the 4-genotype
   - Mean linkage disequilibrium
   - Optional \(F_2 = D_{\mathrm{KL}}(\psi\|\psi^*)\) (`--f2`)
 - **`build_neutral_cache.py`** + **`neutral_cache.py`** — precompute and load neutral (\(\Sigma=0\)) stationary distributions for large \(N\)
+- **`eps12_sweep.py`** — sweep \(\varepsilon_{12}\) with overlay plots (KL and \(\mathcal{F}_N\); all settings in-script)
 - **`simplex_config.yaml`** — YAML-driven parameters (\(N\), \(r\), \(u\), \(v\), \(\Sigma\), sampled times, plots)
 
 See **[2loci/README.md](2loci/README.md)** for usage, formulas, and cache setup.
@@ -32,6 +33,7 @@ cd 2loci
 python build_neutral_cache.py --config neutral_cache_config.yaml
 python simplex.py --config simplex_config.yaml
 python simplex.py --debug-kl    # KL sanity checks
+python eps12_sweep.py           # ε₁₂ sweep (settings in eps12_sweep.py)
 ```
 
 ---
