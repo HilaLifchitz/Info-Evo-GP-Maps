@@ -31,6 +31,11 @@ with symmetric \(2\times2\) matrix \(\Sigma\) (\(\Sigma_{ii}=s_i\), \(\Sigma_{ij
 | `build_neutral_cache.py` | Precompute neutral equilibria \(\varphi\) for several \(N\) |
 | `neutral_cache.py` | Cache I/O (`.npz` keyed by \(u\), \(v\), \(r\)) |
 | `neutral_cache_config.yaml` | Which \(N\) values to cache |
+| `explore_neutral_phi.py` | Characterize the neutral \(\varphi\) across \(N\), \(u/v\), \(r\); marginal heatmaps + LD + diffusion-Beta comparison |
+| `selection_diffusion_vs_chain.py` | Discrete selection equilibrium \(\psi^*\) vs **genotype-simplex** diffusion \(p\propto W^N\prod_i x_i^{\alpha_i-1}\) |
+| `selection_diffusion_r_N_sweep.py` | Sweep \(r\) and \(N\) for the genotype-simplex fit |
+| `allele_diffusion_vs_chain.py` | Chain allele-frequency marginals vs **allele/LE** diffusion \(\rho\propto W^N\prod_i x_i^{2Nu_i-1}(1-x_i)^{2Nv_i-1}\) |
+| `selection_magnitude_sweep.py` | Chain-vs-diffusion fit as a function of scaled selection \(N s_{\max}\) |
 
 Generated at runtime (not committed):
 
@@ -142,6 +147,48 @@ Example output: `cache/neutral_u0_1em4_u1_1em4_v0_1em4_v1_1em4_r0.npz`
 - Transition matrix size: \(S\times S\) with \(S=\binom{N+3}{3}\) (e.g. \(N=30 \Rightarrow S=5456\))
 - Row construction is parallelized (`n_jobs: -1` uses all CPU cores)
 - First run for a new \((N, u, v, r, \Sigma)\) builds the selection matrix; subsequent runs with the same parameters reuse nothing yet (matrix is rebuilt each invocation)
+
+## Equilibrium structure & diffusion-approximation validation
+
+A set of analysis scripts (added 2026-06-02) characterize the chain's equilibria and test how well **diffusion approximations** reproduce them. All write to `results/<timestamp>_*/` (PNG + CSV/log).
+
+### A. Neutral equilibrium \(\varphi\) — `explore_neutral_phi.py`
+
+Sweeps scenarios \((N, u, v, r)\); for each, solves the \(\Sigma=0\) stationary \(\varphi\) and reports corner/edge/interior mass, per-locus marginals, **average LD**, and a comparison of each locus marginal to the diffusion prediction \(\mathrm{Beta}(2Nu_i, 2Nv_i)\).
+
+**Conclusions.**
+
+- \(\varphi\) is **not uniform** over the simplex. With weak mutation (\(2Nu\ll1\)) ~97% of the mass sits on the 4 monomorphic vertices (U-shape). It is only U-shaped in that limit:
+  - \(2Nu\gg1\) (strong mutation) → unimodal **central hump** (interior mass → 1).
+  - asymmetric \(u\neq v\) → mass shifts toward the high-frequency corner; per-locus marginals diverge.
+- The **per-locus diffusion Beta is an excellent approximation** for the marginals across all regimes (TV \(\sim10^{-4}\)–\(10^{-2}\)), even far from the U-shape.
+- The diffusion product-of-Betas predicts **\(D=0\)** (independent loci). The chain's signed \(\mathbb{E}[D]\approx0\) by symmetry, but \(\mathbb{E}|D|\) is substantial at \(r=0\) (\(\approx0.04\)) and **recombination roughly halves it** (\(r=0.5\Rightarrow\approx0.018\)) without changing the marginals — i.e. recombination only reshapes the *joint*, pushing the chain toward the diffusion's independence assumption.
+
+### B. Selection equilibrium vs diffusion — `selection_diffusion_vs_chain.py`, `*_r_N_sweep.py`, `allele_diffusion_vs_chain.py`, `selection_magnitude_sweep.py`
+
+Two diffusion equilibria are compared to the discrete selection equilibrium \(\psi^*\):
+
+- **genotype-simplex** (treats the 4 genotypes as 4 alleles, no recombination): \(p(x)\propto W(x)^N\prod_i x_i^{\alpha_i-1}\), \(W(x)=\sum_i x_i\omega(g_i)\). The mutation exponent \(\alpha_i=2N\cdot(\text{rate into }i)\) is ambiguous for our non-reversible \(M\); we use the per-capita conditional influx \(\alpha_i(x)=2N\sum_{j\neq i}x_jM_{ji}/\sum_{j\neq i}x_j\) (reduces exactly to the 2-allele Wright exponent).
+- **allele-frequency / LE** (per-locus, assumes linkage equilibrium + HWE): \(\rho(x_1,x_2)\propto W(x_1,x_2)^N\prod_i x_i^{2Nu_i-1}(1-x_i)^{2Nv_i-1}\), \(W\) computed from product genotype frequencies. Uses the clean Wright exponents (no \(\alpha\)).
+
+Both use the **\(W^N\)** (haploid) selection scaling. Comparisons are made on the interior support; \(\psi^*\) boundary mass is reported separately.
+
+**Conclusions.**
+
+1. **Selection strength \(N s_{\max}\) governs the fit** (`selection_magnitude_sweep.py`). In the diffusion regime \(N s_{\max}\lesssim1\) (small per-generation \(s\)) the match is **near-exact**: KL \(< 0.05\) bits, TV \(< 0.09\). The error grows **monotonically** with \(N s_{\max}\) (e.g. KL \(\approx0.2\) bits at \(Ns\approx5\), \(\gtrsim0.45\) bits at \(Ns\gtrsim18\)). This is a genuine **strong-selection correction** (the diffusion drops \(O(s^2)\) terms), not a finite-\(N\) artifact.
+2. **This is why "bigger \(N\) doesn't help" at fixed \(s\)**: raising \(N\) raises \(N s\), moving you *off* the weak-selection regime. The diffusion limit requires \(s\to0\) with \(Ns\) fixed. Confirmed by `*_r_N_sweep.py`: at fixed \(s\), \(N=40 < 45 < 50\) in fit quality (slightly worse with \(N\)).
+3. **The residual is a selection-scaling bias**, not the \(\alpha\) surrogate: with \(W^{2N}\) the diffusion *over*-pushes the favored genotype; with \(W^{N}\) it *under*-pushes — so the chain's effective exponent lies **between \(W^N\) and \(W^{2N}\)**. Shrinking mutation to very small values does **not** close the gap (`allele_diffusion_vs_chain.py`), ruling out \(\alpha\) as the dominant error.
+4. **Recombination picks the relevant diffusion.** The genotype-simplex form is the \(r=0\) limit (best at \(r=0\), degrades as \(r\uparrow\)); the allele/LE form assumes LE (improves as \(r\uparrow\)). They **cross over** around \(Ns\approx2\)–3 / intermediate \(r\): the genotype-simplex fit is best at low \(r\) (optimum around \(r\approx0.25\)), the allele/LE fit best at high \(r\).
+
+**One-line takeaway:** the diffusion ↔ exact-chain agreement is excellent whenever selection is weak (\(N s_{\max}=O(1)\), \(s\ll1\)); apparent discrepancies are strong-selection corrections, and each diffusion form matches its own recombination regime.
+
+```bash
+python explore_neutral_phi.py
+python selection_diffusion_vs_chain.py
+python selection_diffusion_r_N_sweep.py
+python allele_diffusion_vs_chain.py
+python selection_magnitude_sweep.py
+```
 
 ## Relation to other code in this repo
 
