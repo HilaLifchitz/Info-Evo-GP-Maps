@@ -14,17 +14,17 @@ then compare two equilibria over the SAME simplex lattice:
       where
         x = (x00, x01, x10, x11) is a point on the genotype simplex,
         W(x) = sum_i x_i * omega(g_i)            (mean fitness at x),
-        alpha_i = 2N * (mutation rate INTO genotype i).
+        alpha_i = N * (mutation rate INTO genotype i).
       => p(x) ∝ W(x)^{N} * prod_i x_i^{alpha_i - 1}.
 
 The 4-allele Wright form assumes parent-independent (reversible) mutation, which
 our M is NOT. We therefore approximate alpha_i with a LOCAL, x-dependent rate.
 Two choices are computed (see ALPHA_MODE):
 
-  "cond"   alpha_i(x) = 2N * [sum_{j!=i} x_j M_ji] / [sum_{j!=i} x_j]
+  "cond"   alpha_i(x) = N * [sum_{j!=i} x_j M_ji] / [sum_{j!=i} x_j]
            (per-capita rate at which a non-i copy mutates into i; this reduces
-            EXACTLY to the 2-allele Wright exponent 2Nu for a single locus.)
-  "influx" alpha_i(x) = 2N *  sum_{j!=i} x_j M_ji
+            EXACTLY to the 2-allele Wright exponent Nu for a single locus at haploid N.)
+  "influx" alpha_i(x) = N *  sum_{j!=i} x_j M_ji
            (raw mutational inflow into i, not per-capita.)
 
 Because the diffusion density has integrable singularities on the simplex
@@ -77,26 +77,6 @@ SETTINGS: list[Setting] = [
 ALPHA_MODE_DEFAULT = "cond"   # which alpha definition the PLOTS use ("cond" or "influx")
 
 
-def _stationary_fast(P_col: np.ndarray) -> np.ndarray:
-    S = P_col.shape[0]
-    try:
-        from scipy.sparse.linalg import eigs, LinearOperator
-        op = LinearOperator((S, S), matvec=lambda x: P_col @ x, dtype=float)
-        _, vecs = eigs(op, k=1, which="LM", maxiter=8000, tol=1e-11)
-        pi = np.real(vecs[:, 0])
-        if pi.sum() < 0:
-            pi = -pi
-        pi = np.clip(pi, 0.0, None)
-        s = float(pi.sum())
-        if s > 0 and np.isfinite(s):
-            pi /= s
-            if float(np.linalg.norm(P_col @ pi - pi, ord=1)) < 1e-6:
-                return pi
-    except Exception:
-        pass
-    return sp.stationary_from_matrix(P_col, tol=1e-12, max_iter=40000)
-
-
 def discrete_psi_star(st: Setting):
     """Discrete selection equilibrium psi* and the simplex lattice."""
     Sigma = sp.build_sigma(st.s1, st.s2, st.eps12)
@@ -108,7 +88,7 @@ def discrete_psi_star(st: Setting):
         st.N, omega, M_mut, st.r, n_jobs=-1, label=st.label, verbose=False,
     )
     P_col = sp.column_stochastic(T_row)
-    psi = _stationary_fast(P_col)
+    psi = sp.stationary_fast(P_col)
     psi = np.clip(psi, 0.0, None)
     psi /= psi.sum()
     return psi, fracs, counts, omega, M_mut
@@ -133,9 +113,9 @@ def diffusion_logdensity(st: Setting, fracs: np.ndarray, omega: np.ndarray,
     influx = XM - X * diagM[None, :]                    # sum_{j!=i} x_j M_ji
     if alpha_mode == "cond":
         denom = np.clip(1.0 - X, 1e-300, None)          # sum_{j!=i} x_j = 1 - x_i
-        alpha = 2.0 * N * influx / denom
+        alpha = float(N) * influx / denom
     elif alpha_mode == "influx":
-        alpha = 2.0 * N * influx
+        alpha = float(N) * influx
     else:
         raise ValueError(f"unknown alpha_mode {alpha_mode!r}")
 

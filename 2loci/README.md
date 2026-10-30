@@ -190,6 +190,77 @@ python allele_diffusion_vs_chain.py
 python selection_magnitude_sweep.py
 ```
 
+## Coupled mutation (`simplex_not_sym.py`)
+
+Independent per-locus mutation is the default. `simplex_not_sym.py` adds **coupled** channels `ux` (00↔11) and `vx` (01↔10) on top of `u,v`. Strong coupling pulls the KL dip toward \(\varepsilon_{12}=0\) and can flatten \(C(t)\).
+
+```bash
+python eps12_not_sym_investigation.py --config eps12_not_sym_config.yaml
+python eps12_not_sym_strong_coupling_ct.py --ux 0.5 --s1 0.02 --s2 -0.005
+```
+
+Configs: `eps12_not_sym_config*.yaml`. Plots go under `plots/eps12_not_sym_*` (gitignored).
+
+## Where does the KL dip sit? (`eps12_dip_*`)
+
+Stationary information \(\mathrm{KL}(\psi^*\|\varphi)\) is typically **U-shaped** in \(\varepsilon_{12}\). Weak-selection theory:
+
+\[
+\varepsilon_{12}^* \approx -\frac{\mathrm{Cov}_\varphi(B,x_{11})}{\mathrm{Var}_\varphi(x_{11})}
+\qquad
+B = s_1 p_1 + s_2 p_2
+\]
+
+which reduces to \(\varepsilon_{12}^*\approx -\tfrac{2}{3}(s_1+s_2)\) for symmetric \(u=v\).
+
+| Script | Question |
+|--------|----------|
+| `eps12_equilibrium_kl_sweep.py` | KL_eq vs \(\varepsilon_{12}\) (no trajectories) |
+| `eps12_dip_prediction_test.py` | parabola-fit vs \(-\tfrac{2}{3}(s_1+s_2)\) |
+| `eps12_dip_cov_prediction.py` | full Cov/Var vs fitted dip |
+| `eps12_dip_robustness.py` | dip vs \(r\) and vs \(u=v\) |
+| `eps12_dip_sign_pairs.py`, `eps12_dip_sign_pairs2.py` | mixed vs same-sign \((s_1,s_2)\) |
+| `eps12_dip_sum0.py` | \(s_1+s_2=0\): leftover \(O(\|s\|^2)\) offset |
+| `eps_dip_gallery.py`, `eps_dip_gallery_grid.py` | multi-\(N\) gallery |
+
+**Findings (see `SESSION_HANDOFF_2026-06-12.md`):** at \(u=v\) only \(s_1+s_2\) sets the sign of the dip; \(c(u)\) grows above \(2/3\) as mutation increases; Cov/Var tracks well at weak \(u\); when \(s_1+s_2=0\) the linear formula is zero but fitted dips stay slightly positive.
+
+## Information cost and efficiency (`eps12_delta_d_*`)
+
+Per-generation \(\Delta D\), cost \(C(t)\), and efficiency \(\eta=\Delta D/(N C)\). Color = \(\mathrm{KL}_{\mathrm{eq}}\); linestyle = sign of \(\varepsilon_{12}\).
+
+```bash
+python eps12_delta_d_sweep.py --config eps12_delta_d_config.yaml
+python compare_sigma_dynamics.py --config compare_sigma_config.yaml
+python eps12_optimize_eta.py
+python eps12_greedy_adapt.py
+python eps12_greedy_adapt3d.py
+```
+
+`r` variants: `eps12_delta_d_config_r0p01.yaml`, `_r0p1.yaml`, `_r0p5.yaml`. Overlay: `eps12_eta_r_overlay.py`.
+
+## log Z and free-fitness gallery (`log_Z_*`)
+
+Cond-α partition function \(\log Z\) as a landscape score, compared with chain dynamics around the predicted \(\varepsilon^*\).
+
+```bash
+python log_Z_eps12_sweep.py
+python log_Z_param_sweep.py
+python log_Z_eps_star_gallery.py
+python log_Z_eps_star_fine_scan.py
+```
+
+Shared helpers: `f2b_reference.py` (F2b/F3 + Cov/Var \(\varepsilon^*\)). Diffusion vs chain: `cond_alpha_vs_chain.py`, `ploidy_test.py`, `f2b_*.py`. Notes: `COND_ALPHA.md`.
+
+## Equivalent landscapes (`equiv_landscape/`)
+
+Find \((s_1,s_2,\varepsilon_{12})\) triples with the same *relative* genotype fitness shape, and scan iso-\(\langle\ln W\rangle\) slices.
+
+```bash
+python -m equiv_landscape.find_equiv_sigma --scan
+python -m equiv_landscape.match_wstar_min_d
+```
+
 ## Relation to other code in this repo
 
 - **`Markov_2_loci.py`** — earlier two-locus tools (LD model, spectral modes, D/I series on X/P/G spaces). `simplex.py` is a self-contained genotype-simplex implementation with the same recombination convention and a focus on \(\psi(t)\) vs neutral \(\varphi\).

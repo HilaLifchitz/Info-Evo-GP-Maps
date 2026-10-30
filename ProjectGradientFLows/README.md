@@ -121,6 +121,32 @@ python 2D_HeatEquation.py --n 48 --tau 5e-4 --steps 30 --euler-solver full --plo
 
 ---
 
+### 3D Simplex (Shahshahani Metric)
+
+#### `3D_Simplex_Shahshahani.py` ⭐ **New (Starter Implementation)**
+
+Implements diffusion on the **3D simplex** (4 components) using the **Shahshahani metric**, which corresponds to the JKO scheme for entropy under the Fisher/Shahshahani geometry. This script provides:
+
+- 3D simplex grid discretization via a masked Cartesian cube
+- Shahshahani diffusion tensor \(B(x)\) for the 3D simplex
+- **Implicit Euler** step (CG solve) as the JKO-equivalent update
+- **Explicit Euler** step for sanity checks
+- 2D marginal visualization (integrate over \(x_3\))
+
+**Usage:**
+```bash
+python 3D_Simplex_Shahshahani.py --n 32 --tau 1e-4 --steps 30 --scheme implicit --verbose
+```
+
+**Key parameters:**
+- `--n`: Grid resolution per axis (masked to the simplex)
+- `--tau`: Time step
+- `--ne`: Effective population size (scales \(B(x)\))
+- `--scheme`: `implicit` (JKO-equivalent) or `explicit`
+- `--cg-tol`, `--cg-max-iter`: Linear solver settings
+
+---
+
 ## Mathematical Background
 
 ### The Heat Equation as a Gradient Flow
@@ -235,6 +261,20 @@ python 2D_HeatEquation.py --n 48 --transport-slices 32 --pd-iters 8000 \
 - `--pd-verbose`: Print continuity residual every `--pd-check-every` iterations
 - `--pd-debug-objective`: Print entropy (E), action (A), and total objective (J) during inner solve
 - `--plot-common-scale`: Use same color scale for fair visual comparison
+
+---
+
+## Adaptive landscape sketches (`AdptiveLandscapeSimulator/`)
+
+Not JKO — static fitness geometry on the genotype simplex, used for intuition.
+
+| File | Purpose |
+|------|---------|
+| `AdptiveLandscapeSimulator/ExAdaptiveLandscape.py` | \(n\) loci, pairwise epistasis, slice plots of \(\omega(g)\) |
+| `AdptiveLandscapeSimulator/ExAdaptiveLandscape2Loci.py` | Two loci with LD coordinate \(D\); genotype frequencies from \((f_1,f_2,D)\) |
+| `3D_Simplex_Shahshahani.py` | Diffusion / JKO-style flow on the 3-simplex with the Shahshahani metric |
+
+Config sketch: `my.yaml`.
 
 ---
 

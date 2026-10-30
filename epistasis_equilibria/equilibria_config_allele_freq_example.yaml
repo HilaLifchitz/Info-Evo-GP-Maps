@@ -1,0 +1,41 @@
+# Equilibrium on allele-frequency space [0,1]^n  (see equilibria_allele_freq.py)
+# Run: python equilibria_allele_freq.py --config equilibria_config_allele_freq_example.yaml
+#
+# Stationary density (detailed balance, diffusion with diagonal noise):
+#   ρ ∝ exp(-V), V = -N log W + Σ_i (1-2N u_i) log x_i + Σ_i (1-2N v_i) log(1-x_i)
+#   ℓ = -V + const = N log W + Σ (2N u_i-1) log x_i + Σ (2N v_i-1) log(1-x_i)
+#   W(x) = E[ω(g) | x]   under independence (haploid) or Hardy–Weinberg (diploid).
+
+n_loci: 2
+N: 50
+ploidy: haploid          # haploid | diploid
+
+# Mutation (0→1) and (1→0); scalars or length-n lists. Used when alpha is omitted.
+u: 1.0e-5
+v: 1.0e-5
+
+# Optional: alpha in YAML is only for printed reference (2N u); ℓ always uses u and v above.
+# alpha: [0.02, 0.02, 0.02]
+
+# Diploid only: dominance h_i ∈ [0,1] per locus (scalar or length-n list).
+h: 0.5
+
+seed: 42
+out: ""
+
+# Matrix M: M_ii = s_i, M_ij = ε_ij/2 for i≠j  (same convention as other equilibria scripts)
+sigma:
+  # - [0.08, 0.02, -0.01]
+  # - [0.02, 0.10, 0.015]
+  # - [-0.01, 0.015, 0.06]
+
+  - [0.8, -0.5]
+  - [-0.5 , 0.10]
+
+# sigma_file: my_M.npy   # alternative: load n×n matrix
+
+explore:
+  method: mc              # mc | grid  (grid is for small n only)
+  n_samples: 80000
+  grid_resolution: 17     # points per axis if method=grid
+  x_eps: 1.0e-8           # clip x_i to (x_eps, 1-x_eps)

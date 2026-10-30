@@ -153,40 +153,6 @@ def _eps12_grid() -> np.ndarray:
     return np.unique(np.round(grid, 10))
 
 
-def _stationary_fast(P_col: np.ndarray) -> tuple[np.ndarray | None, float, bool]:
-    """
-    psi* with P_col @ psi* = psi*, via ARPACK (Arnoldi) on the dominant eigenvector.
-
-    Much faster than naive power iteration for slow-mixing (weak-selection) chains.
-    Falls back to power iteration if ARPACK does not return a clean result.
-    Returns (psi_star, ||P psi* - psi*||_1, converged).
-    """
-    S = P_col.shape[0]
-    try:
-        from scipy.sparse.linalg import eigs, LinearOperator
-
-        op = LinearOperator((S, S), matvec=lambda x: P_col @ x, dtype=float)
-        vals, vecs = eigs(op, k=1, which="LM", maxiter=5000, tol=1e-10)
-        pi = np.real(vecs[:, 0])
-        if np.sum(pi) < 0:
-            pi = -pi
-        pi = np.clip(pi, 0.0, None)
-        ssum = float(pi.sum())
-        if ssum > 0 and np.isfinite(ssum):
-            pi /= ssum
-            residual = float(np.linalg.norm(P_col @ pi - pi, ord=1))
-            if np.isfinite(residual) and residual < 1e-6:
-                return pi, residual, True
-    except Exception:
-        pass
-
-    # fallback: power iteration (looser cap than the library default)
-    psi_star, residual, ok = try_selection_equilibrium(
-        P_col, tol=1e-10, max_iter=20000, residual_tol=1e-6
-    )
-    return psi_star, residual, ok
-
-
 def _markov_params(r: float, eps12: float):
     """Build a 2loci SimplexParams; config_dir points at 2loci/ to reuse cache."""
     cfg = {
@@ -315,9 +281,9 @@ def run() -> list[Row]:
             init_rate_kl = float(dyn.rate_kl_bits[0])
             init_rate_f1 = float(dyn.rate_f1[0])
 
-            # (A) discrete equilibrium psi*  (fast ARPACK solver)
+            # (A) discrete equilibrium psi*  (fast ARPACK solver, power-iteration fallback)
             if COMPUTE_DISCRETE:
-                psi_star, _resid, ok = _stationary_fast(P_col)
+                psi_star, _resid, ok = try_selection_equilibrium(P_col)
                 if psi_star is not None:
                     kl_eq_disc = kl_divergence_bits(psi_star, phi)
                     ff_eq_disc = free_fitness_1(psi_star, w_per_state, params.N)
@@ -401,7 +367,7 @@ def run_trajectories(times: list[int], r: float = 0.0, verbose: bool = True) -> 
             P_col, phi, times, w_per_state, d_per_state,
             counts, fracs, params.N, params.top_k, params.ld_top_k_times, psi_star=None,
         )
-        psi_star, _resid, ok = _stationary_fast(P_col)
+        psi_star, _resid, ok = try_selection_equilibrium(P_col)
         kl_eq = kl_divergence_bits(psi_star, phi) if psi_star is not None else float("nan")
         ff_eq = free_fitness_1(psi_star, w_per_state, params.N) if psi_star is not None else float("nan")
         out.append(TrajResult(

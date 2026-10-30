@@ -1,0 +1,18 @@
+# Scenario: eps* clearly != 0  (pred eps* = +2/3|s1+s2| ≈ +0.000667)
+# s1 + s2 = -0.001  →  eps* = -2/3(s1+s2) ≈ +0.000667
+N: 30
+r: 0.0
+u: [0.001, 0.001]
+v: [0.001, 0.001]
+coupled_factor: 10.0
+
+s1: 0.005
+s2: -0.002
+
+pergen_max_t: 500
+
+eps12_min: -0.0015
+eps12_max: 0.0015
+eps12_step: 0.00015
+
+compare_symmetric: true

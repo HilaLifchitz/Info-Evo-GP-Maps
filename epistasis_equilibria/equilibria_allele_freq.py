@@ -5,11 +5,11 @@ Stationary density (reversible Wright–Fisher–type diffusion with diagonal no
 B_ii = x_i(1-x_i) in detailed balance):
 
     ρ(x) ∝ exp(-V(x)),
-    V(x) = -2N log W(x) + Σ_i (1 - 4N u_i) log x_i + Σ_i (1 - 4N v_i) log(1 - x_i),
+    V(x) = -N log W(x) + Σ_i (1 - 2N u_i) log x_i + Σ_i (1 - 2N v_i) log(1 - x_i),
 
 so (up to an additive constant)
 
-    ℓ(x) = -V(x) = 2N log W(x) + Σ_i (4N u_i - 1) log x_i + Σ_i (4N v_i - 1) log(1 - x_i).
+    ℓ(x) = -V(x) = N log W(x) + Σ_i (2N u_i - 1) log x_i + Σ_i (2N v_i - 1) log(1 - x_i).
 
     (Verify u/v ↔ boundary terms against your diffusion notation; Kimura often pairs
     v with log x and u with log(1−x) when u is 0→1 and v is 1→0.)
@@ -255,16 +255,33 @@ def ell_batch(
     """
     Unnormalized log density (up to constant):
 
-        ℓ(x) = 2N log W(x) + Σ_i (4N u_i - 1) log x_i + Σ_i (4N v_i - 1) log(1 - x_i).
+        ℓ(x) = N log W(x) + Σ_i (2N u_i - 1) log x_i + Σ_i (2N v_i - 1) log(1 - x_i).
 
     Convention note: Kimura's mutation-only stationary often pairs u (0→1) with (1−x)
     and v (1→0) with x; if your u,v labels differ, swap the two sums accordingly.
     """
     Xs = np.clip(X, x_eps, 1.0 - x_eps)
     logW = log_mean_fitness_batch(G, log_omega, X, ploidy, x_eps)
-    term_x = np.sum((4.0 * N_pop * u_vec - 1.0) * np.log(Xs), axis=1)
-    term_1mx = np.sum((4.0 * N_pop * v_vec - 1.0) * np.log(1.0 - Xs), axis=1)
-    return 2.0 * N_pop * logW + term_x + term_1mx
+    term_x = np.sum((2.0 * N_pop * u_vec - 1.0) * np.log(Xs), axis=1)
+    term_1mx = np.sum((2.0 * N_pop * v_vec - 1.0) * np.log(1.0 - Xs), axis=1)
+    return N_pop * logW + term_x + term_1mx
+
+
+def mutation_log_terms_batch(
+    X: np.ndarray,
+    N_pop: float,
+    u_vec: np.ndarray,
+    v_vec: np.ndarray,
+    x_eps: float,
+) -> np.ndarray:
+    """
+    Mutation part of ell(x):
+        Σ_i (2N u_i - 1) log x_i + Σ_i (2N v_i - 1) log(1-x_i).
+    """
+    Xs = np.clip(X, x_eps, 1.0 - x_eps)
+    term_x = np.sum((2.0 * N_pop * u_vec - 1.0) * np.log(Xs), axis=1)
+    term_1mx = np.sum((2.0 * N_pop * v_vec - 1.0) * np.log(1.0 - Xs), axis=1)
+    return term_x + term_1mx
 
 
 def V_batch(
@@ -357,8 +374,9 @@ def explore_grid_small(
 ) -> dict[str, Any]:
     """Tensor grid on [x_eps,1-x_eps]^n (only for small n)."""
     n = G.shape[1]
-    edges = np.linspace(x_eps, 1.0 - x_eps, resolution)
-    grid = np.stack(np.meshgrid(*[edges] * n, indexing="ij"), axis=-1).reshape(-1, n)
+    edges = np.linspace(x_eps, 1.0 - x_eps, resolution + 1)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    grid = np.stack(np.meshgrid(*[centers] * n, indexing="ij"), axis=-1).reshape(-1, n)
     n_pts = grid.shape[0]
     ell = ell_batch(grid, G, log_omega, N_pop, u_vec, v_vec, ploidy, x_eps)
     m = float(np.max(ell))
@@ -452,9 +470,25 @@ def parse_u_v_alpha(n: int, N_pop: float, u: Any, v: Any, alpha_cfg: Any) -> tup
         if alpha.size != n:
             raise ValueError(f"alpha: expected length {n}, got {alpha.size}")
     else:
-        # Default: θ_i = 4 N u_i (same scaling spirit as genotype-simplex scripts)
-        alpha = 4.0 * N_pop * u_vec
+        # Default printed reference under the haploid allele-frequency scaling.
+        alpha = 2.0 * N_pop * u_vec
     return u_vec, v_vec, alpha
+
+
+def ess_quality_label(ess_ratio: float) -> str:
+    """
+    Heuristic quality for ESS / number_of_support_points.
+    Requested threshold: around 1% is bad.
+    """
+    if ess_ratio < 0.01:
+        return "bad"
+    if ess_ratio < 0.05:
+        return "weak"
+    if ess_ratio < 0.20:
+        return "okay"
+    if ess_ratio < 0.50:
+        return "good"
+    return "very good"
 
 
 # ---------------------------------------------------------------------------
@@ -489,14 +523,17 @@ def run_from_args(args: argparse.Namespace) -> None:
 
     u_vec, v_vec, alpha = parse_u_v_alpha(n, N_pop, args.u, args.v, getattr(args, "alpha", None))
 
+    h_vec = None
     if ploidy == "haploid":
         G = all_genotypes_haploid(n)
         log_omega = log_fitness_haploid(G, M)
+        G_for_quad = G.astype(float)
     else:
         G = all_genotypes_diploid(n)
-        h = _as_float_vec(getattr(args, "h", 0.5), n, "h")
-        np.clip(h, 0.0, 1.0, out=h)
-        log_omega = log_fitness_diploid(G, M, h)
+        h_vec = _as_float_vec(getattr(args, "h", 0.5), n, "h")
+        np.clip(h_vec, 0.0, 1.0, out=h_vec)
+        log_omega = log_fitness_diploid(G, M, h_vec)
+        G_for_quad = phi_diploid(G, h_vec)
 
     k = G.shape[0]
     x_eps = float(args.x_eps)
@@ -505,10 +542,18 @@ def run_from_args(args: argparse.Namespace) -> None:
     print(f"N = {N_pop}")
     print(f"u (per locus): {u_vec}")
     print(f"v (per locus): {v_vec}")
-    print(f"4N u (reference): {alpha}  (ℓ uses u,v on log x and log(1−x) separately)")
+    print(f"2N u (reference): {alpha}  (ℓ uses u,v on log x and log(1−x) separately)")
     print("M (s_i on diagonal, ε_ij/2 off-diagonal):")
     np.set_printoptions(precision=4, suppress=True)
     print(M)
+    print()
+
+    # Weak-selection style check: N * max_g |g^T M g| << 1
+    quad_vals = np.einsum("bi,ij,bj->b", G_for_quad, M, G_for_quad)
+    max_abs_quad = float(np.max(np.abs(quad_vals)))
+    smallness = N_pop * max_abs_quad
+    print(f"max_g |g^T M g| = {max_abs_quad:.6g}")
+    print(f"N * max_g |g^T M g| = {smallness:.6g}   (target: << 1)")
     print()
 
     method = str(args.explore_method).lower()
@@ -543,7 +588,58 @@ def run_from_args(args: argparse.Namespace) -> None:
     print(f"Std[x] (marginal, sqrt diag of Cov): {np.sqrt(np.clip(np.diag(res['Cov_x']), 0, np.inf))}")
     print(f"Entropy of discrete approximation H(p): {res['entropy_weights']:.6g} nats")
     print(f"ESS (1/Σ p_i^2): {res['ess']:.6g}")
+    n_support = int(np.asarray(res["weights"]).size)
+    ess_ratio = float(res["ess"]) / max(1, n_support)
+    ess_pct = 100.0 * ess_ratio
+    quality = ess_quality_label(ess_ratio)
+    print(f"ESS / support_points = {ess_ratio:.6g} ({ess_pct:.2f}%) -> {quality}")
+    if method == "mc":
+        print("Interpretation guide: ~1% is bad; 5-20% usable; >20% good.")
     print(f"Argmax ℓ(x) in sample/grid (mode proxy): {res['x_mode_argmax_ell']}")
+
+    # ---------------- extra diagnostics requested ----------------
+    X_support = res["grid"] if "grid" in res else res["X"]
+    p_eq = np.asarray(res["weights"], dtype=float)
+    logW_support = log_mean_fitness_batch(G, log_omega, X_support, ploidy, x_eps)
+    mut_support = mutation_log_terms_batch(X_support, N_pop, u_vec, v_vec, x_eps)
+
+    # Neutral baseline (Wright / M=0): logW_neutral = log(1) = 0 => ell_neutral = mutation term only.
+    ell_neutral = mut_support
+    m0 = float(np.max(ell_neutral))
+    q_unnorm = np.exp(ell_neutral - m0)
+    q_neutral = q_unnorm / float(np.sum(q_unnorm))
+
+    # KL( rho_eq || rho_neutral ) computed on the same support points.
+    tiny = 1e-300
+    kl_eq_to_neutral_bits = float(
+        np.sum(p_eq * (np.log(p_eq + tiny) - np.log(q_neutral + tiny)))
+        / math.log(2.0)
+    )
+
+    # Free fitness from the variational form:
+    # ell(x)/N = logW(x) + mutation_term(x)/N,
+    # F_N(rho) = E_rho[ell(x)/N] + Entropy(rho)/N.
+    entropy_disc = float(res["entropy_weights"])
+    local_free = logW_support + mut_support / N_pop
+    free_fitness = float(np.sum(p_eq * local_free) + entropy_disc / N_pop)
+    free_fitness_logsumexp = float(logsumexp1d(np.asarray(res["ell"], dtype=float)) / N_pop)
+    if "grid" in res:
+        dx_support = (1.0 - 2.0 * x_eps) / max(1, int(args.grid_resolution) - 1)
+        log_support_measure = n * math.log(dx_support)
+    else:
+        cube_volume = (1.0 - 2.0 * x_eps) ** n
+        log_support_measure = math.log(cube_volume) - math.log(n_support)
+    free_fitness_integral = free_fitness + log_support_measure / N_pop
+    mean_local_free = float(np.sum(p_eq * local_free))
+    mean_logW = float(np.sum(p_eq * logW_support))
+
+    print("\n--- Extra diagnostics ---")
+    print(f"KL(ρ_eq || ρ_neutral[M=0]) = {kl_eq_to_neutral_bits:.6g} bits")
+    print(f"E_ρ[log W(x)] = {mean_logW:.6g}")
+    print(f"E_ρ[logW + mutation/N] = {mean_local_free:.6g}")
+    print(f"Support free fitness F_N(ρ_eq) = {free_fitness:.6g}")
+    print(f"Log-sum-exp check logΣexp(ℓ)/N = {free_fitness_logsumexp:.6g}")
+    print(f"Integral estimate log∫exp(ℓ)dx/N = {free_fitness_integral:.6g}")
 
     corr = np.zeros((n, n))
     for i in range(n):
@@ -576,11 +672,11 @@ def run_from_args(args: argparse.Namespace) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Equilibrium ρ ∝ exp(-V) on [0,1]^n; ℓ = 2N log W + Σ(4Nu_i−1)log x + Σ(4Nv_i−1)log(1−x)."
+        description="Equilibrium ρ ∝ exp(-V) on [0,1]^n; ℓ = N log W + Σ(2Nu_i−1)log x + Σ(2Nv_i−1)log(1−x)."
     )
     p.add_argument("--config", type=str, default="", help="YAML or JSON config path.")
     p.add_argument("--n-loci", type=int, default=2)
-    p.add_argument("--N", type=float, default=50.0, help="Scaling N in V = -2N log W + …")
+    p.add_argument("--N", type=float, default=50.0, help="Haploid population-size scaling in V = -N log W + …")
     p.add_argument("--ploidy", choices=["haploid", "diploid"], default="haploid")
     p.add_argument("--u", type=float, default=1e-4, help="Mutation 0→1 (scalar; use YAML for vector).")
     p.add_argument("--v", type=float, default=1e-4, help="Mutation 1→0 (scalar).")

@@ -1,0 +1,20 @@
+# Coupled-mutation eps12 investigation (see simplex_not_sym.py)
+N: 30
+r: 0.0
+u: [0.001, 0.001]
+v: [0.001, 0.001]
+# defaults: ux=vx=10*u if omitted
+coupled_factor: 10.0
+
+s1: -0.001
+s2: 0.0005
+
+pergen_max_t: 500
+
+# fine grid around eps=0 (like gallery shape plots)
+eps12_min: -0.004
+eps12_max: 0.004
+eps12_step: 0.0004
+
+# also run symmetric independent-mutation baseline for comparison
+compare_symmetric: true

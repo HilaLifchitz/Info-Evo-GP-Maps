@@ -64,28 +64,6 @@ SCENARIOS: list[Scenario] = [
 ]
 
 
-def _stationary_fast(P_col: np.ndarray) -> np.ndarray:
-    """Dominant eigenvector of P_col (ARPACK), power-iteration fallback."""
-    S = P_col.shape[0]
-    try:
-        from scipy.sparse.linalg import eigs, LinearOperator
-
-        op = LinearOperator((S, S), matvec=lambda x: P_col @ x, dtype=float)
-        vals, vecs = eigs(op, k=1, which="LM", maxiter=8000, tol=1e-11)
-        pi = np.real(vecs[:, 0])
-        if pi.sum() < 0:
-            pi = -pi
-        pi = np.clip(pi, 0.0, None)
-        s = float(pi.sum())
-        if s > 0 and np.isfinite(s):
-            pi /= s
-            if float(np.linalg.norm(P_col @ pi - pi, ord=1)) < 1e-6:
-                return pi
-    except Exception:
-        pass
-    return sp.stationary_from_matrix(P_col, tol=1e-12, max_iter=40000)
-
-
 def neutral_phi(sc: Scenario) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Build the Sigma=0 chain for one scenario and return (phi, fracs, counts)."""
     u = _vec(sc.u)
@@ -98,7 +76,7 @@ def neutral_phi(sc: Scenario) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         sc.N, omega_neutral, M_mut, sc.r, n_jobs=-1, label=sc.label, verbose=False,
     )
     P_col = sp.column_stochastic(T_row)
-    phi = _stationary_fast(P_col)
+    phi = sp.stationary_fast(P_col)
     phi = np.clip(phi, 0.0, None)
     phi /= phi.sum()
     return phi, fracs, counts

@@ -28,7 +28,7 @@ from simplex import (
     fitness_exp,
     load_config,
     mutation_matrix_asymmetric,
-    stationary_from_matrix,
+    stationary_fast,
 )
 
 DEFAULT_BUILD_CONFIG = Path(__file__).resolve().parent / "neutral_cache_config.yaml"
@@ -50,7 +50,7 @@ def build_for_N(
         N, omega_neutral, M_mut, r, n_jobs=n_jobs, label=f"neutral N={N}", verbose=True,
     )
     P_col = column_stochastic(T_row)
-    pi = stationary_from_matrix(P_col)
+    pi = stationary_fast(P_col)
     elapsed = time.perf_counter() - t0
     print(f"  stationary phi: sum={pi.sum():.12f}, max={pi.max():.6e}, time={elapsed:.1f}s", flush=True)
     return pi

@@ -79,6 +79,15 @@ dmypy.json
 *.dat
 *.out
 *.log
+*.json
+
+# Generated plot / cache directories
+2loci/plots/
+2loci/cache/
+2loci/results/
+equilibria_vs_dynamics/results/
+epistasis_equilibria/results/
+types of mutations/results/
 
 # Image files (if you don't want to track them)
 *.png

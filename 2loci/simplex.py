@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Two-locus Wright–Fisher Markov chain on the 4-genotype simplex.
+Two-locus haploid Wright–Fisher Markov chain on the 4-genotype simplex.
 
 State space
 -----------
@@ -631,6 +631,46 @@ def stationary_from_matrix(
     return pi
 
 
+def stationary_fast(
+    P_col: np.ndarray,
+    *,
+    tol: float = 1e-12,
+    max_iter: int = 40000,
+    residual_tol: float = 1e-6,
+) -> np.ndarray:
+    """
+    Stationary distribution pi with P_col @ pi = pi, via ARPACK (Arnoldi) on the
+    dominant eigenvector — much faster than power iteration for slow-mixing
+    (weak-selection / small-mutation) chains. Falls back to power iteration
+    (`stationary_from_matrix`) if ARPACK does not return a clean, residual-verified
+    result.
+
+    Same output as `stationary_from_matrix` (the eigenvalue-1 Perron vector, unique
+    when u, v > 0), just a faster solve path.
+    """
+    S = P_col.shape[0]
+    try:
+        from scipy.sparse.linalg import eigs, LinearOperator
+
+        op = LinearOperator((S, S), matvec=lambda x: P_col @ x, dtype=float)
+        _vals, vecs = eigs(op, k=1, which="LM", maxiter=max(5000, S * 2), tol=1e-11)
+        pi = np.real(vecs[:, 0])
+        if pi.sum() < 0:
+            pi = -pi
+        pi = np.clip(pi, 0.0, None)
+        ssum = float(pi.sum())
+        if ssum > 0 and np.isfinite(ssum):
+            pi /= ssum
+            residual = float(np.linalg.norm(P_col @ pi - pi, ord=1))
+            if np.isfinite(residual) and residual < residual_tol:
+                return pi
+    except Exception:
+        pass
+
+    # fallback: robust power iteration
+    return stationary_from_matrix(P_col, tol=tol, max_iter=max_iter)
+
+
 def kl_divergence_bits(p: np.ndarray, q: np.ndarray, eps: float = 1e-16) -> float:
     """
     D_KL(p || q) with log base 2 (bits):
@@ -704,9 +744,9 @@ def print_kl_debug_sanity(
 
 
 def allele_freqs_from_genotype_fracs(fracs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Marginal allele-1 frequencies (p1, p2) from genotype fractions (00, 01, 10, 11)."""
-    p1 = fracs[:, 1] + fracs[:, 3]
-    p2 = fracs[:, 1] + fracs[:, 2]
+    """Marginal allele-1 frequencies at locus 1 and locus 2 from genotype fractions (00, 01, 10, 11)."""
+    p1 = fracs[:, 2] + fracs[:, 3]  # locus 1 allele 1: 10 + 11
+    p2 = fracs[:, 1] + fracs[:, 3]  # locus 2 allele 1: 01 + 11
     return p1, p2
 
 
@@ -745,13 +785,13 @@ def w_potential_per_state(
     N: int,
 ) -> np.ndarray:
     """
-    W(x) = log E_x[e^{g^T Sigma g}] - (1/2N) Σ_i (x @ M)_i log x_i.
+    W(x) = log E_x[e^{g^T Sigma g}] - (1/N) Σ_i (x @ M)_i log x_i.
 
     Shape (S,) — one value per simplex lattice point.
     """
     log_w = log_mean_fitness_genotype_simplex(fracs, omega)
     mut = mutation_log_terms_genotype_simplex(fracs, M_mut)
-    return log_w - mut / (2.0 * float(N))
+    return log_w - mut / float(N)
 
 
 def linkage_disequilibrium_per_state(fracs: np.ndarray) -> np.ndarray:
@@ -772,12 +812,12 @@ def free_fitness_1(
     N: int,
 ) -> float:
     """
-    F_1(rho) = <W>_rho + H(rho) / (2N).
+    F_1(rho) = <W>_rho + H(rho) / N.
 
     W includes selection (log mean fitness) and mutation term Σ_i (x@M)_i log x_i.
     """
     rho = np.asarray(rho, dtype=float)
-    return float(np.sum(rho * w_per_state) + shannon_entropy_nats(rho) / (2.0 * float(N)))
+    return float(np.sum(rho * w_per_state) + shannon_entropy_nats(rho) / float(N))
 
 
 def mean_linkage_disequilibrium(rho: np.ndarray, d_per_state: np.ndarray) -> float:
@@ -809,10 +849,12 @@ def try_selection_equilibrium(
     Attempt psi* with P_col @ psi* = psi* (selection+r recombination stationary).
 
     Returns (psi_star, ||P psi* - psi*||_1, converged).
-    converged is True when the residual is below residual_tol after power iteration.
+    converged is True when the residual is below residual_tol.
+
+    Uses the fast ARPACK solver (`stationary_fast`) with a power-iteration fallback.
     """
     try:
-        psi_star = stationary_from_matrix(P_col, tol=tol, max_iter=max_iter)
+        psi_star = stationary_fast(P_col, tol=tol, max_iter=max_iter, residual_tol=residual_tol)
     except RuntimeError:
         return None, float("nan"), False
     residual = float(np.linalg.norm(P_col @ psi_star - psi_star, ord=1))
@@ -1160,8 +1202,8 @@ def print_dynamics_summary(
 ) -> None:
     """Print KL, F_1, mean LD, optional F_2, and top-k LD snapshots."""
     print("Dynamics from psi(0) = phi  (neutral start)")
-    print("  F_1(rho) = <W>_rho + H(rho)/(2N)  [always computed when times is set]")
-    print("    W(x) = log E_x[e^{g^T Sigma g}] - (1/2N) sum_i (x@M)_i log x_i")
+    print("  F_1(rho) = <W>_rho + H(rho)/N  [always computed when times is set]")
+    print("    W(x) = log E_x[e^{g^T Sigma g}] - (1/N) sum_i (x@M)_i log x_i")
     print("  mean LD = E_rho[x_00 x_11 - x_01 x_10]  [always computed when times is set]")
     print()
 
@@ -1382,7 +1424,7 @@ def compute_phi(
         verbose=True,
     )
     P_col_neutral = column_stochastic(T_row_neutral)
-    phi = stationary_from_matrix(P_col_neutral)
+    phi = stationary_fast(P_col_neutral)
 
     if cache_path is not None:
         save_neutral_phi(cache_path, params.N, phi, params.u, params.v, params.r)

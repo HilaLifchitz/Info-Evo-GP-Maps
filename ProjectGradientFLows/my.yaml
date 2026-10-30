@@ -1,0 +1,35 @@
+# Config for equilibria_explored.py (copy of equilibria_config_example.yaml)
+# Run: python equilibria_explored.py --config my.yaml --mcmc-samples 5000
+
+n_loci: 5
+N: 50
+u: 1.0e-3
+v: 1.0e-3
+seed: 42
+out: ""
+progress_every: 0
+
+sigma:
+  - [0.1, 0.01, -0.02, 0.003, 0.004]
+  - [0.01, 0.15, 0.03, -0.04, 0.005]
+  - [-0.02, 0.03, -0.16, 0.05, 0.006]
+  - [0.003, -0.04, 0.05, -0.17, 0.007]
+  - [0.004, 0.005, 0.006, 0.007, 0.08]
+
+s:
+  dist: fixed
+  fixed: 0.1
+  mean: 0.1
+  std: 0.05
+  var: null
+  low: -0.1
+  high: 0.2
+
+eps:
+  dist: fixed
+  fixed: 0.0
+  mean: 0.0
+  std: 0.05
+  var: null
+  low: -0.1
+  high: 0.1

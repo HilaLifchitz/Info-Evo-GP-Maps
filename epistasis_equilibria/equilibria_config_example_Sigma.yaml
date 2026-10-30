@@ -1,0 +1,53 @@
+# Example config for equilibria_explored.py
+# Run: python equilibria_explored.py --config equilibria_config_example.yaml
+#
+# All parameters optional. Three ways to set Σ:
+#   A) sigma: direct n×n matrix (uncomment below)
+#   B) sigma_file: path to .npy or .txt (uncomment below)
+#   C) s and eps: distributions (active when A/B not set)
+
+n_loci: 5
+N: 20
+u: 1.0e-3
+v: 1.0e-3
+seed: 42
+out: ""
+progress_every: 0
+
+# -----------------------------------------------------------------------------
+# Option A: Specify Sigma directly (overrides s and eps)
+# -----------------------------------------------------------------------------
+sigma:
+  - [0.1, 0.01, -0.02, 0.003, 0.004]
+  - [0.01, 0.15, 0.03, -0.04, 0.005]
+  - [-0.02, 0.03, 0.36, 0.05, 0.006]
+  - [0.003, -0.04, 0.05, -0.17, 0.007]
+  - [0.004, 0.005, 0.006, 0.007, 0.08]
+  # - [0.1, 0.02]
+  # - [0.02, 0.15]
+
+# -----------------------------------------------------------------------------
+# Option B: Load Sigma from file (overrides s and eps)
+# -----------------------------------------------------------------------------
+# sigma_file: my_sigma.npy
+
+# -----------------------------------------------------------------------------
+# Option C: Use s and eps distributions (when sigma/sigma_file not set)
+# -----------------------------------------------------------------------------
+s:
+  dist: fixed    # fixed | normal | uniform
+  fixed: 0.1
+  mean: 0.1
+  std: 0.05
+  var: null       # use instead of std when dist=normal
+  low: -0.1
+  high: 0.2
+
+eps:
+  dist: fixed
+  fixed: 0.0
+  mean: 0.0
+  std: 0.05
+  var: null
+  low: -0.1
+  high: 0.1

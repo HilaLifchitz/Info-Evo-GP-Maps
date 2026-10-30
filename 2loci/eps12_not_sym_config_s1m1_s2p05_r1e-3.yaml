@@ -1,0 +1,17 @@
+# s1=-0.001, s2=+0.0005, r=0.001  (weak sel + small recombination)
+N: 30
+r: 0.001
+u: [0.001, 0.001]
+v: [0.001, 0.001]
+coupled_factor: 10.0
+
+s1: -0.001
+s2: 0.0005
+
+pergen_max_t: 500
+
+eps12_min: -0.004
+eps12_max: 0.004
+eps12_step: 0.0004
+
+compare_symmetric: true

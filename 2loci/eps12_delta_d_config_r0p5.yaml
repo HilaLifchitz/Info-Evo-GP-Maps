@@ -1,0 +1,13 @@
+# eps12 sweep with recombination r=0.5
+N: 30
+r: 0.5
+u: [0.01, 0.01]
+v: [0.01, 0.01]
+s1: 0.001
+s2: -0.001
+
+pergen_max_t: 500
+
+eps12_min: -0.4
+eps12_max: 0.4
+eps12_step: 0.05
