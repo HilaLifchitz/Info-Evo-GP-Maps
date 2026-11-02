@@ -23,12 +23,12 @@ const text = {
 export function HasseDiagram({
   n,
   colorBy = "trait",
-  s = 8,
+  vs = 0.0625,
   zStar = 0.5,
 }: {
   n: number;
   colorBy?: ColorBy;
-  s?: number;
+  vs?: number;
   zStar?: number;
 }) {
   const layout = useMemo(() => layoutHasse(n), [n]);
@@ -141,7 +141,7 @@ export function HasseDiagram({
       {layout.mode === "layers" && layout.bars
         ? layout.bars.map((bar) => {
             const z = bar.k / n;
-            const w = fitnessW(z, s, zStar);
+            const w = fitnessW(z, vs, zStar);
             const fill = colorBy === "fitness" ? fitnessFill(w) : traitFill(z);
             return (
               <rect
@@ -159,7 +159,7 @@ export function HasseDiagram({
           })
         : Array.from(layout.pos.entries()).map(([g, p]) => {
             const z = p.k / n;
-            const w = fitnessW(z, s, zStar);
+            const w = fitnessW(z, vs, zStar);
             const fill = colorBy === "fitness" ? fitnessFill(w) : traitFill(z);
             const labelFill =
               colorBy === "fitness"
@@ -261,7 +261,7 @@ export function FitnessColorBar() {
   );
 }
 
-export function FitnessProfile({ s, zStar }: { s: number; zStar: number }) {
+export function FitnessProfile({ vs, zStar }: { vs: number; zStar: number }) {
   const Wsvg = 720;
   const H = 78;
   const left = 40;
@@ -274,7 +274,7 @@ export function FitnessProfile({ s, zStar }: { s: number; zStar: number }) {
   const pts: string[] = [];
   for (let i = 0; i <= nPts; i++) {
     const z = i / nPts;
-    const w = fitnessW(z, s, zStar);
+    const w = fitnessW(z, vs, zStar);
     const x = left + z * innerW;
     const y = top + (1 - w) * innerH;
     pts.push(`${x},${y}`);

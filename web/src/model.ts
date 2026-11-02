@@ -126,15 +126,23 @@ export function clamp01(value: number): number {
   return Math.min(1, Math.max(0, x));
 }
 
-export function clampS(value: number): number {
+export const VS_MIN = 0.02;
+export const VS_MAX = 1;
+export const VS_DEFAULT = 0.0625; // s = 1/(2 Vs) = 8
+
+export function clampVs(value: number): number {
   const x = Number(value);
-  if (!Number.isFinite(x)) return 8;
-  return Math.min(30, Math.max(0.5, x));
+  if (!Number.isFinite(x)) return VS_DEFAULT;
+  return Math.min(VS_MAX, Math.max(VS_MIN, x));
 }
 
-export function fitnessW(z: number, s: number, zStar: number): number {
+export function sFromVs(vs: number): number {
+  return 1 / (2 * vs);
+}
+
+export function fitnessW(z: number, vs: number, zStar: number): number {
   const d = z - zStar;
-  return Math.exp(-s * d * d);
+  return Math.exp(-(d * d) / (2 * vs));
 }
 
 export function fitnessFill(w: number): string {

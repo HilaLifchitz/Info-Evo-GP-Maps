@@ -7,8 +7,12 @@ import {
   binomial,
   clamp01,
   clampN,
-  clampS,
+  clampVs,
   fitnessW,
+  sFromVs,
+  VS_DEFAULT,
+  VS_MAX,
+  VS_MIN,
   formatCount,
   formatEdges,
   formatPow2,
@@ -35,11 +39,12 @@ import {
 
 export default function App() {
   const [n, setN] = useState(4);
-  const [s, setS] = useState(8);
+  const [vsRaw, setVs] = useState(VS_DEFAULT);
   const [zStar, setZStar] = useState(0.5);
   const nn = clampN(n);
-  const ss = clampS(s);
+  const vs = clampVs(vsRaw);
   const zz = clamp01(zStar);
+  const sEq = sFromVs(vs);
   const nGen = 2 ** nn;
   const mid = binomial(nn, Math.floor(nn / 2));
 
@@ -188,7 +193,7 @@ export default function App() {
           rows={[
             ["Phenotype range (here [0, 1])", "Number of binary loci n"],
             ["Phenotype-to-fitness map W(z)", "How genotype g maps to z (the encoding)"],
-            ["Selection strength s and optimum z*", "Genotype space {0,1}ⁿ and its equilibria"],
+            ["Stabilizing width Vs and optimum z*", "Genotype space {0,1}ⁿ and its equilibria"],
             ["Biological meaning of the trait", "Per-locus effect size (here 1/n)"],
           ]}
         />
@@ -214,13 +219,17 @@ export default function App() {
               </Text>
               <TeX name="zn" label="z_n(g) equals k over n" />
               <Text>
-                The first fitness map is stabilizing selection around a fixed
-                optimum z*, with strength s held fixed as n grows:
+                The first fitness map is Gaussian stabilizing selection around
+                a fixed optimum z*, with width Vs held fixed as n grows:
               </Text>
               <TeX
                 name="omega"
-                label="omega_n(g) equals exp of minus s times (z_n(g) minus z-star) squared"
+                label="omega_n(g) equals exp of minus (z_n(g) minus z-star) squared over 2 V_s"
               />
+              <Text tone="secondary" size="small">
+                W_max = 1. Smaller Vs is stronger selection. Equivalent
+                parameterization s = 1/(2 Vs).
+              </Text>
             </Stack>
           </CardBody>
         </Card>
@@ -289,27 +298,28 @@ export default function App() {
                 <span className="muted">{zz.toFixed(2)}</span>
               </Row>
               <Row gap={12} wrap>
-                <span className="label">strength s</span>
+                <span className="label">width Vs</span>
                 <input
                   type="range"
-                  min={0.5}
-                  max={30}
-                  step={0.5}
-                  value={ss}
-                  onChange={(e) => setS(Number(e.currentTarget.value))}
-                  aria-label="Stabilizing selection strength s"
+                  min={VS_MIN}
+                  max={VS_MAX}
+                  step={0.005}
+                  value={vs}
+                  onChange={(e) => setVs(Number(e.currentTarget.value))}
+                  aria-label="Stabilizing selection width V s"
                 />
-                <span className="muted">{ss.toFixed(1)}</span>
+                <span className="muted">{vs.toFixed(3)}</span>
               </Row>
               <Row gap={8} wrap>
                 <Stat value={zz.toFixed(2)} label="optimum z*" />
-                <Stat value={ss.toFixed(1)} label="strength s" />
-                <Stat value={fitnessW(0, ss, zz).toFixed(3)} label="W at z = 0" />
-                <Stat value={fitnessW(1, ss, zz).toFixed(3)} label="W at z = 1" />
+                <Stat value={vs.toFixed(3)} label="width Vs" />
+                <Stat value={sEq.toFixed(1)} label="s = 1/(2 Vs)" />
+                <Stat value={fitnessW(0, vs, zz).toFixed(3)} label="W at z = 0" />
+                <Stat value={fitnessW(1, vs, zz).toFixed(3)} label="W at z = 1" />
               </Row>
               <div className="viz">
-                <FitnessProfile s={ss} zStar={zz} />
-                <HasseDiagram n={nn} colorBy="fitness" s={ss} zStar={zz} />
+                <FitnessProfile vs={vs} zStar={zz} />
+                <HasseDiagram n={nn} colorBy="fitness" vs={vs} zStar={zz} />
               </div>
               <Text tone="secondary" size="small">
                 Fill is fitness: red = low W, green = high W. The dashed line is
