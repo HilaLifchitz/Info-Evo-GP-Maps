@@ -131,9 +131,19 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, x));
 }
 
-const VS_MIN = 0.02;
+const VS_MIN = 0.001;
 const VS_MAX = 1;
 const VS_DEFAULT = 0.0625; // s = 1/(2 Vs) = 8, matching the previous default
+const VS_SLIDER_STEPS = 1000;
+
+function vsToSlider(vs: number): number {
+  const t = Math.log(vs / VS_MIN) / Math.log(VS_MAX / VS_MIN);
+  return Math.round(VS_SLIDER_STEPS * Math.min(1, Math.max(0, t)));
+}
+
+function sliderToVs(t: number): number {
+  return clampVs(VS_MIN * (VS_MAX / VS_MIN) ** (Number(t) / VS_SLIDER_STEPS));
+}
 
 function clampVs(value: number): number {
   const x = Number(value);
@@ -143,6 +153,283 @@ function clampVs(value: number): number {
 
 function sFromVs(vs: number): number {
   return 1 / (2 * vs);
+}
+
+const BOLTZMANN_N_JUMPS = [
+  2, 3, 4, 5, 6, 7, 8, 10, 16, 20, 50, 100, 200, 500, 1000,
+];
+const NPOP_MIN = 5;
+const NPOP_MAX = 200;
+const NPOP_DEFAULT = 50;
+const ALPHA_MIN = 0.2;
+const ALPHA_MAX = 10;
+const ALPHA_DEFAULT = 2;
+const ALPHA_SLIDER_STEPS = 400;
+/** Total Dirichlet concentration α₀ = Kα = 2ⁿ α. Default matches n=4, α=2. */
+const ALPHA0_MIN = 1;
+const ALPHA0_MAX = 65536;
+const ALPHA0_DEFAULT = 32;
+const ALPHA0_SLIDER_STEPS = 400;
+const ALPHA0_JUMPS = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192];
+
+function clampNpop(value: number): number {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return NPOP_DEFAULT;
+  return Math.min(NPOP_MAX, Math.max(NPOP_MIN, Math.round(x)));
+}
+
+function clampAlpha(value: number): number {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return ALPHA_DEFAULT;
+  return Math.min(ALPHA_MAX, Math.max(ALPHA_MIN, x));
+}
+
+function alphaToSlider(a: number): number {
+  const t = Math.log(a / ALPHA_MIN) / Math.log(ALPHA_MAX / ALPHA_MIN);
+  return Math.round(ALPHA_SLIDER_STEPS * Math.min(1, Math.max(0, t)));
+}
+
+function sliderToAlpha(t: number): number {
+  return clampAlpha(
+    ALPHA_MIN * (ALPHA_MAX / ALPHA_MIN) ** (Number(t) / ALPHA_SLIDER_STEPS),
+  );
+}
+
+function clampAlpha0(value: number): number {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return ALPHA0_DEFAULT;
+  return Math.min(ALPHA0_MAX, Math.max(ALPHA0_MIN, x));
+}
+
+function alpha0ToSlider(a: number): number {
+  const t = Math.log(a / ALPHA0_MIN) / Math.log(ALPHA0_MAX / ALPHA0_MIN);
+  return Math.round(ALPHA0_SLIDER_STEPS * Math.min(1, Math.max(0, t)));
+}
+
+function sliderToAlpha0(t: number): number {
+  return clampAlpha0(
+    ALPHA0_MIN * (ALPHA0_MAX / ALPHA0_MIN) ** (Number(t) / ALPHA0_SLIDER_STEPS),
+  );
+}
+
+function logAlphaFromAlpha0(alpha0: number, n: number): number {
+  return Math.log(alpha0) - n * Math.LN2;
+}
+
+function formatSci(x: number, digits = 2): string {
+  if (!Number.isFinite(x)) return "—";
+  if (x === 0) return "0";
+  const ax = Math.abs(x);
+  if (ax >= 1 && ax < 10000) return x.toFixed(ax >= 100 ? 0 : 2);
+  if (ax >= 0.01 && ax < 1) return x.toFixed(3);
+  return x.toExponential(digits);
+}
+
+function impliedAlpha0(alpha: number, n: number): number {
+  const l = Math.log(alpha) + n * Math.LN2;
+  return l > 700 ? Infinity : Math.exp(l);
+}
+
+function impliedAlpha(alpha0: number, n: number): number {
+  return Math.exp(logAlphaFromAlpha0(alpha0, n));
+}
+
+function mulberry32(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s += 0x6d2b79f5;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randn(rng: () => number): number {
+  const u = Math.max(rng(), 1e-12);
+  const v = Math.max(rng(), 1e-12);
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function randGamma(a: number, rng: () => number): number {
+  if (a < 1) {
+    const u = Math.max(rng(), 1e-12);
+    return randGamma(a + 1, rng) * u ** (1 / a);
+  }
+  const d = a - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  for (;;) {
+    let x = 0;
+    let v = 0;
+    do {
+      x = randn(rng);
+      v = 1 + c * x;
+    } while (v <= 0);
+    v = v * v * v;
+    const u = rng();
+    if (u < 1 - 0.0331 * x * x * x * x) return d * v;
+    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+  }
+}
+
+function logBinoms(n: number): number[] {
+  const L = new Array<number>(n + 1);
+  L[0] = 0;
+  for (let k = 1; k <= n; k++) {
+    L[k] = L[k - 1] + Math.log(n - k + 1) - Math.log(k);
+  }
+  return L;
+}
+
+function omegaLayers(n: number, vs: number, zStar: number): number[] {
+  const w = new Array<number>(n + 1);
+  for (let k = 0; k <= n; k++) {
+    const d = k / n - zStar;
+    w[k] = Math.exp(-(d * d) / (2 * vs));
+  }
+  return w;
+}
+
+/** Dirichlet(α C(n,0), …, α C(n,n)): Hamming-layer masses of Dirichlet(α,…,α). */
+function sampleLayerDirichlet(
+  n: number,
+  logAlpha: number,
+  logB: number[],
+  rng: () => number,
+): number[] {
+  const m = n + 1;
+  const logg = new Array<number>(m);
+  for (let k = 0; k < m; k++) {
+    const logA = logAlpha + logB[k];
+    if (logA > 700) {
+      logg[k] = logA;
+    } else if (logA > 20) {
+      const ak = Math.exp(logA);
+      logg[k] = Math.log(Math.max(ak + Math.sqrt(ak) * randn(rng), 1e-300));
+    } else if (logA < -40) {
+      logg[k] = -1e9;
+    } else {
+      logg[k] = Math.log(Math.max(randGamma(Math.exp(logA), rng), 1e-300));
+    }
+  }
+  let maxL = -Infinity;
+  for (let k = 0; k < m; k++) if (logg[k] > maxL) maxL = logg[k];
+  let s = 0;
+  const x = new Array<number>(m);
+  for (let k = 0; k < m; k++) {
+    x[k] = Math.exp(logg[k] - maxL);
+    s += x[k];
+  }
+  const inv = 1 / s;
+  for (let k = 0; k < m; k++) x[k] *= inv;
+  return x;
+}
+
+type BoltzResult = {
+  D: number;
+  C: number;
+  eta: number;
+  ess: number;
+  samples: number;
+  meanLogW: number;
+  meanW: number;
+  F: number;
+};
+
+function boltzmannMaint(
+  n: number,
+  vs: number,
+  zStar: number,
+  Npop: number,
+  logAlpha: number,
+  seedTag: number,
+): BoltzResult | null {
+  if (n < 1 || n > N_MAX) return null;
+  const layers = n + 1;
+  const omega = omegaLayers(n, vs, zStar);
+  const logB = logBinoms(n);
+  const samples = n <= 20 ? 4000 : 2500;
+  const rng = mulberry32(
+    (n * 10007 +
+      Math.round(vs * 1e6) +
+      Math.round(zStar * 1e4) +
+      Npop * 13 +
+      Math.round(logAlpha * 1e6) +
+      seedTag * 99991) >>>
+      0,
+  );
+  const logTilt = new Array<number>(samples);
+  const meanFit = new Array<number>(samples);
+  const C = new Array<number>(samples);
+  let maxLt = -Infinity;
+  for (let s = 0; s < samples; s++) {
+    const x = sampleLayerDirichlet(n, logAlpha, logB, rng);
+    let W = 0;
+    for (let k = 0; k < layers; k++) W += x[k] * omega[k];
+    W = Math.max(W, 1e-300);
+    meanFit[s] = W;
+    const lt = 2 * Npop * Math.log(W);
+    logTilt[s] = lt;
+    if (lt > maxLt) maxLt = lt;
+    let cost = 0;
+    for (let k = 0; k < layers; k++) {
+      const r = Math.max(omega[k] / W, 1e-300);
+      cost += x[k] * r * Math.log2(r);
+    }
+    C[s] = cost;
+  }
+  let sumExp = 0;
+  for (let s = 0; s < samples; s++) {
+    sumExp += Math.exp(logTilt[s] - maxLt);
+  }
+  let essInv = 0;
+  let eLogTilt = 0;
+  let eC = 0;
+  let eW = 0;
+  for (let s = 0; s < samples; s++) {
+    const ps = Math.exp(logTilt[s] - maxLt) / sumExp;
+    essInv += ps * ps;
+    eLogTilt += ps * logTilt[s];
+    eC += ps * C[s];
+    eW += ps * meanFit[s];
+  }
+  const logZ = maxLt + Math.log(sumExp / samples);
+  const twoN = 2 * Npop;
+  const Dbits = (eLogTilt - logZ) / Math.LN2;
+  const meanLogW = eLogTilt / twoN;
+  const F = logZ / twoN;
+  const eta = eC > 1e-18 ? Dbits / (twoN * eC) : NaN;
+  return {
+    D: Dbits,
+    C: eC,
+    eta,
+    ess: 1 / essInv,
+    samples,
+    meanLogW,
+    meanW: eW,
+    F,
+  };
+}
+
+function BoltzmannReadout({ boltz }: { boltz: BoltzResult }) {
+  return (
+    <Stack gap={10}>
+      <Row gap={8} wrap>
+        <Stat value={boltz.D.toFixed(3)} label="D bits" />
+        <Stat value={boltz.C.toFixed(4)} label="⟨C⟩_* bits" />
+        <Stat
+          value={Number.isFinite(boltz.eta) ? boltz.eta.toFixed(3) : "—"}
+          label="η_maint = D/(2N⟨C⟩)"
+        />
+        <Stat value={boltz.ess.toFixed(1)} label="ESS" />
+      </Row>
+      <Row gap={8} wrap>
+        <Stat value={boltz.meanLogW.toFixed(4)} label="⟨log W⟩_* nats" />
+        <Stat value={boltz.meanW.toFixed(4)} label="⟨W⟩_*" />
+        <Stat value={boltz.F.toFixed(4)} label="F* nats" />
+      </Row>
+    </Stack>
+  );
 }
 
 /** Stabilizing Gaussian: W = exp[−(z − z*)² / (2 Vs)], W_max = 1. */
@@ -644,10 +931,27 @@ export default function PolygenicMaintenanceEfficiency() {
   const [nRaw, setN] = useCanvasState("lociN", 4);
   const [vsRaw, setVs] = useCanvasState("stabVs", VS_DEFAULT);
   const [zStarRaw, setZStar] = useCanvasState("zStar", 0.5);
+  const [npopRaw, setNpop] = useCanvasState("popN", NPOP_DEFAULT);
+  const [alphaRaw, setAlpha] = useCanvasState("dirichletAlpha", ALPHA_DEFAULT);
+  const [alpha0Raw, setAlpha0] = useCanvasState("dirichletAlpha0", ALPHA0_DEFAULT);
   const n = clampN(nRaw);
   const vs = clampVs(vsRaw);
   const zStar = clamp01(zStarRaw);
+  const npop = clampNpop(npopRaw);
+  const alpha = clampAlpha(alphaRaw);
+  const alpha0 = clampAlpha0(alpha0Raw);
   const sEq = sFromVs(vs);
+  const boltz = useMemo(
+    () => boltzmannMaint(n, vs, zStar, npop, Math.log(alpha), 1),
+    [n, vs, zStar, npop, alpha],
+  );
+  const boltz0 = useMemo(
+    () =>
+      boltzmannMaint(n, vs, zStar, npop, logAlphaFromAlpha0(alpha0, n), 2),
+    [n, vs, zStar, npop, alpha0],
+  );
+  const a0Implied = impliedAlpha0(alpha, n);
+  const aImplied = impliedAlpha(alpha0, n);
   const nGen = 2 ** n;
   const mid = binomial(n, Math.floor(n / 2));
   const nEdges = n * 2 ** (n - 1);
@@ -964,12 +1268,12 @@ export default function PolygenicMaintenanceEfficiency() {
               <Text weight="medium">width Vs</Text>
               <input
                 type="range"
-                min={VS_MIN}
-                max={VS_MAX}
-                step={0.005}
-                value={vs}
+                min={0}
+                max={VS_SLIDER_STEPS}
+                step={1}
+                value={vsToSlider(vs)}
                 onChange={(e: { currentTarget: { value: string } }) =>
-                  setVs(Number(e.currentTarget.value))
+                  setVs(sliderToVs(Number(e.currentTarget.value)))
                 }
                 aria-label="Stabilizing selection width V s"
                 style={{
@@ -979,13 +1283,16 @@ export default function PolygenicMaintenanceEfficiency() {
                 }}
               />
               <Text tone="secondary" size="small">
-                {vs.toFixed(3)}
+                {vs >= 0.01 ? vs.toFixed(3) : vs.toFixed(4)}
               </Text>
             </Row>
 
             <Row gap={8} wrap>
               <Stat value={zStar.toFixed(2)} label="optimum z*" />
-              <Stat value={vs.toFixed(3)} label="width Vs" />
+              <Stat
+                value={vs >= 0.01 ? vs.toFixed(3) : vs.toFixed(4)}
+                label="width Vs"
+              />
               <Stat value={sEq.toFixed(1)} label="s = 1/(2 Vs)" />
               <Stat
                 value={fitnessW(0, vs, zStar).toFixed(3)}
@@ -1018,6 +1325,291 @@ export default function PolygenicMaintenanceEfficiency() {
           </Stack>
         </CardBody>
       </Card>
+
+      <Card>
+        <CardHeader>Boltzmann η_maint — α fixed</CardHeader>
+        <CardBody>
+          <Stack gap={14}>
+            <Text>
+              {"φ_n = Dirichlet(α,…,α) on K = 2^n genotypes. α held fixed."}{" "}
+              Total concentration {"α₀ = Kα = 2^n α"} then grows with n, so the
+              neutral measure concentrates around equal genotype frequencies.
+              Uses Vs and z* from above.
+            </Text>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">n</Text>
+              <input
+                type="range"
+                min={0}
+                max={SLIDER_STEPS}
+                step={1}
+                value={nToSlider(n)}
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setN(sliderToN(Number(e.currentTarget.value)))
+                }
+                aria-label="Number of loci for Boltzmann"
+                style={{
+                  width: 220,
+                  accentColor: theme.accent.primary,
+                  cursor: "pointer",
+                }}
+              />
+              <Text tone="secondary" size="small">
+                {n}
+              </Text>
+              <Row gap={4} align="center" wrap>
+                {BOLTZMANN_N_JUMPS.map((v) => (
+                  <Pill
+                    key={`b-${v}`}
+                    size="sm"
+                    active={v === n}
+                    onClick={() => setN(v)}
+                  >
+                    {v}
+                  </Pill>
+                ))}
+              </Row>
+            </Row>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">N</Text>
+              <input
+                type="range"
+                min={NPOP_MIN}
+                max={NPOP_MAX}
+                step={1}
+                value={npop}
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setNpop(Number(e.currentTarget.value))
+                }
+                aria-label="Population size N"
+                style={{
+                  width: 220,
+                  accentColor: theme.accent.primary,
+                  cursor: "pointer",
+                }}
+              />
+              <Text tone="secondary" size="small">
+                {npop}
+              </Text>
+            </Row>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">α</Text>
+              <input
+                type="range"
+                min={0}
+                max={ALPHA_SLIDER_STEPS}
+                step={1}
+                value={alphaToSlider(alpha)}
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setAlpha(sliderToAlpha(Number(e.currentTarget.value)))
+                }
+                aria-label="Dirichlet alpha"
+                style={{
+                  width: 220,
+                  accentColor: theme.accent.primary,
+                  cursor: "pointer",
+                }}
+              />
+              <Text tone="secondary" size="small">
+                {alpha.toFixed(2)}
+              </Text>
+            </Row>
+            {boltz ? (
+              <BoltzmannReadout boltz={boltz} />
+            ) : (
+              <Text tone="secondary">n = {n} is outside the slider range.</Text>
+            )}
+            <Text tone="secondary" size="small">
+              Implied {"α₀ = 2^n α"} = {formatSci(a0Implied)}
+              {" · μ_→g = α/(4N)"} = {(alpha / (4 * npop)).toExponential(2)}.
+              Low ESS means {"W^{2N}"} is very peaked; treat η and F* as a
+              sketch.
+            </Text>
+          </Stack>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>{"Boltzmann η_maint — α₀ = Kα fixed"}</CardHeader>
+        <CardBody>
+          <Stack gap={14}>
+            <Text>
+              {"Choose n and α₀. Then α(n) = α₀ / 2^n, so Kα stays constant."}{" "}
+              Same N, Vs, z* as the α-fixed table.
+            </Text>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">n</Text>
+              <input
+                type="range"
+                min={0}
+                max={SLIDER_STEPS}
+                step={1}
+                value={nToSlider(n)}
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setN(sliderToN(Number(e.currentTarget.value)))
+                }
+                aria-label="Number of loci for fixed alpha0"
+                style={{
+                  width: 220,
+                  accentColor: theme.accent.primary,
+                  cursor: "pointer",
+                }}
+              />
+              <Text weight="medium">{n}</Text>
+              <Row gap={4} align="center" wrap>
+                {BOLTZMANN_N_JUMPS.map((v) => (
+                  <Pill
+                    key={`b0-${v}`}
+                    size="sm"
+                    active={v === n}
+                    onClick={() => setN(v)}
+                  >
+                    {v}
+                  </Pill>
+                ))}
+              </Row>
+            </Row>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">{"α₀"}</Text>
+              <input
+                type="range"
+                min={0}
+                max={ALPHA0_SLIDER_STEPS}
+                step={1}
+                value={alpha0ToSlider(alpha0)}
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setAlpha0(sliderToAlpha0(Number(e.currentTarget.value)))
+                }
+                aria-label="Total Dirichlet concentration alpha 0"
+                style={{
+                  width: 220,
+                  accentColor: theme.accent.primary,
+                  cursor: "pointer",
+                }}
+              />
+              <Text weight="medium">{formatSci(alpha0)}</Text>
+              <Row gap={4} align="center" wrap>
+                {ALPHA0_JUMPS.map((v) => (
+                  <Pill
+                    key={`a0-${v}`}
+                    size="sm"
+                    active={v === alpha0}
+                    onClick={() => setAlpha0(v)}
+                  >
+                    {v}
+                  </Pill>
+                ))}
+                <Pill
+                  size="sm"
+                  active={Math.abs(alpha0 - a0Implied) / Math.max(alpha0, 1) < 0.02}
+                  onClick={() =>
+                    setAlpha0(
+                      clampAlpha0(
+                        Number.isFinite(a0Implied) ? a0Implied : ALPHA0_DEFAULT,
+                      ),
+                    )
+                  }
+                >
+                  {"= 2^n α"}
+                </Pill>
+              </Row>
+            </Row>
+            <Row gap={8} wrap>
+              <Stat value={String(n)} label="loci n" />
+              <Stat value={formatSci(alpha0)} label="α₀ = Kα" />
+              <Stat value={formatSci(aImplied)} label="α(n) = α₀/2^n" />
+            </Row>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">N</Text>
+              <input
+                type="range"
+                min={NPOP_MIN}
+                max={NPOP_MAX}
+                step={1}
+                value={npop}
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setNpop(Number(e.currentTarget.value))
+                }
+                aria-label="Population size N for fixed alpha0"
+                style={{
+                  width: 220,
+                  accentColor: theme.accent.primary,
+                  cursor: "pointer",
+                }}
+              />
+              <Text tone="secondary" size="small">
+                {npop}
+              </Text>
+            </Row>
+            {boltz0 ? (
+              <BoltzmannReadout boltz={boltz0} />
+            ) : (
+              <Text tone="secondary">n = {n} is outside the slider range.</Text>
+            )}
+            <Text tone="secondary" size="small">
+              Implied {"α(n) = α₀/2^n"} = {formatSci(aImplied)}
+              {" · μ_→g = α/(4N)"} = {(aImplied / (4 * npop)).toExponential(2)}.
+              If the η decline with n disappears here, the α-fixed result was
+              mostly the changing neutral equilibrium, not polygenicity. This
+              Dirichlet is still a parent-independent mutation structure, not
+              independent per-locus mutation.
+            </Text>
+          </Stack>
+        </CardBody>
+      </Card>
+
+      <Stack gap={8}>
+        <H3>Both scalings at this n</H3>
+        <Table
+          headers={[
+            "scaling",
+            "α",
+            "α₀ = Kα",
+            "D bits",
+            "⟨C⟩_*",
+            "η_maint",
+            "F* nats",
+            "ESS",
+          ]}
+          rows={[
+            [
+              "α fixed",
+              formatSci(alpha),
+              formatSci(a0Implied),
+              boltz ? boltz.D.toFixed(3) : "—",
+              boltz ? boltz.C.toFixed(4) : "—",
+              boltz && Number.isFinite(boltz.eta) ? boltz.eta.toFixed(3) : "—",
+              boltz ? boltz.F.toFixed(4) : "—",
+              boltz ? boltz.ess.toFixed(1) : "—",
+            ],
+            [
+              "α₀ fixed",
+              formatSci(aImplied),
+              formatSci(alpha0),
+              boltz0 ? boltz0.D.toFixed(3) : "—",
+              boltz0 ? boltz0.C.toFixed(4) : "—",
+              boltz0 && Number.isFinite(boltz0.eta)
+                ? boltz0.eta.toFixed(3)
+                : "—",
+              boltz0 ? boltz0.F.toFixed(4) : "—",
+              boltz0 ? boltz0.ess.toFixed(1) : "—",
+            ],
+          ]}
+          striped
+        />
+        <Text tone="secondary" size="small">
+          Same n, N, Vs, z*. Neither scaling makes the neutrals identical —
+          only the total Dirichlet concentration is matched in the second row.
+        </Text>
+        <Callout tone="info" title="A regime where η rises with n">
+          Hold α₀ fixed and small. On even n (so a genotype sits at z*=0.5):
+          α₀=4, N=50, Vs=0.0625 gives η ≈ 7.1, 9.8, 10.4, 11.7, 12.0, 15.0
+          at n=4,6,8,12,16,24. D falls, ⟨C⟩ falls faster. Canvas default
+          α₀=32 is near-flat. Large α₀ kills the rise: the Dirichlet is too
+          concentrated for selection to reweight. Odd n dips because no type
+          has z exactly 0.5.
+        </Callout>
+      </Stack>
 
       <Stack gap={8}>
         <H3>What this picture is for</H3>

@@ -1,23 +1,46 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ColorBar, FitnessColorBar, FitnessProfile, HasseDiagram } from "./HasseDiagram";
 import {
+  ALPHA0_DEFAULT,
+  ALPHA0_JUMPS,
+  ALPHA0_SLIDER_STEPS,
+  ALPHA_DEFAULT,
+  ALPHA_SLIDER_STEPS,
+  BOLTZMANN_N_JUMPS,
   FULL_HASSE_N,
   N_JUMPS,
+  NPOP_DEFAULT,
+  NPOP_MAX,
+  NPOP_MIN,
   SLIDER_STEPS,
+  VS_DEFAULT,
+  VS_SLIDER_STEPS,
+  alpha0ToSlider,
+  alphaToSlider,
   binomial,
+  boltzmannMaint,
   clamp01,
+  clampAlpha,
+  clampAlpha0,
   clampN,
+  clampNpop,
   clampVs,
   fitnessW,
-  sFromVs,
-  VS_DEFAULT,
-  VS_MAX,
-  VS_MIN,
   formatCount,
   formatEdges,
   formatPow2,
+  formatSci,
+  impliedAlpha,
+  impliedAlpha0,
+  logAlphaFromAlpha0,
   nToSlider,
+  sFromVs,
+  sliderToAlpha,
+  sliderToAlpha0,
   sliderToN,
+  sliderToVs,
+  vsToSlider,
+  type BoltzResult,
 } from "./model";
 import {
   Callout,
@@ -37,14 +60,51 @@ import {
   Text,
 } from "./ui";
 
+function BoltzmannReadout({ boltz }: { boltz: BoltzResult }) {
+  return (
+    <Stack gap={10}>
+      <Row gap={8} wrap>
+        <Stat value={boltz.D.toFixed(3)} label="D bits" />
+        <Stat value={boltz.C.toFixed(4)} label="⟨C⟩_* bits" />
+        <Stat
+          value={Number.isFinite(boltz.eta) ? boltz.eta.toFixed(3) : "—"}
+          label="η_maint = D/(2N⟨C⟩)"
+        />
+        <Stat value={boltz.ess.toFixed(1)} label="ESS" />
+      </Row>
+      <Row gap={8} wrap>
+        <Stat value={boltz.meanLogW.toFixed(4)} label="⟨log W⟩_* nats" />
+        <Stat value={boltz.meanW.toFixed(4)} label="⟨W⟩_*" />
+        <Stat value={boltz.F.toFixed(4)} label="F* nats" />
+      </Row>
+    </Stack>
+  );
+}
+
 export default function App() {
   const [n, setN] = useState(4);
   const [vsRaw, setVs] = useState(VS_DEFAULT);
   const [zStar, setZStar] = useState(0.5);
+  const [npopRaw, setNpop] = useState(NPOP_DEFAULT);
+  const [alphaRaw, setAlpha] = useState(ALPHA_DEFAULT);
+  const [alpha0Raw, setAlpha0] = useState(ALPHA0_DEFAULT);
   const nn = clampN(n);
   const vs = clampVs(vsRaw);
   const zz = clamp01(zStar);
+  const npop = clampNpop(npopRaw);
+  const alpha = clampAlpha(alphaRaw);
+  const alpha0 = clampAlpha0(alpha0Raw);
   const sEq = sFromVs(vs);
+  const boltz = useMemo(
+    () => boltzmannMaint(nn, vs, zz, npop, Math.log(alpha), 1),
+    [nn, vs, zz, npop, alpha],
+  );
+  const boltz0 = useMemo(
+    () => boltzmannMaint(nn, vs, zz, npop, logAlphaFromAlpha0(alpha0, nn), 2),
+    [nn, vs, zz, npop, alpha0],
+  );
+  const a0Implied = impliedAlpha0(alpha, nn);
+  const aImplied = impliedAlpha(alpha0, nn);
   const nGen = 2 ** nn;
   const mid = binomial(nn, Math.floor(nn / 2));
 
@@ -301,18 +361,23 @@ export default function App() {
                 <span className="label">width Vs</span>
                 <input
                   type="range"
-                  min={VS_MIN}
-                  max={VS_MAX}
-                  step={0.005}
-                  value={vs}
-                  onChange={(e) => setVs(Number(e.currentTarget.value))}
+                  min={0}
+                  max={VS_SLIDER_STEPS}
+                  step={1}
+                  value={vsToSlider(vs)}
+                  onChange={(e) => setVs(sliderToVs(Number(e.currentTarget.value)))}
                   aria-label="Stabilizing selection width V s"
                 />
-                <span className="muted">{vs.toFixed(3)}</span>
+                <span className="muted">
+                  {vs >= 0.01 ? vs.toFixed(3) : vs.toFixed(4)}
+                </span>
               </Row>
               <Row gap={8} wrap>
                 <Stat value={zz.toFixed(2)} label="optimum z*" />
-                <Stat value={vs.toFixed(3)} label="width Vs" />
+                <Stat
+                  value={vs >= 0.01 ? vs.toFixed(3) : vs.toFixed(4)}
+                  label="width Vs"
+                />
                 <Stat value={sEq.toFixed(1)} label="s = 1/(2 Vs)" />
                 <Stat value={fitnessW(0, vs, zz).toFixed(3)} label="W at z = 0" />
                 <Stat value={fitnessW(1, vs, zz).toFixed(3)} label="W at z = 1" />
@@ -329,6 +394,203 @@ export default function App() {
             </Stack>
           </CardBody>
         </Card>
+
+        <Card>
+          <CardHeader>Boltzmann η_maint — α fixed</CardHeader>
+          <CardBody>
+            <Stack gap={14}>
+              <Text>
+                φ_n = Dirichlet(α,…,α) on K = 2^n genotypes. α held fixed. Total
+                concentration α₀ = Kα = 2^n α then grows with n. Uses Vs and z*
+                from above. Hamming-layer Dirichlet, not a 2^n sample.
+              </Text>
+              <Row gap={12} wrap>
+                <span className="label">n</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={SLIDER_STEPS}
+                  step={1}
+                  value={nToSlider(nn)}
+                  onChange={(e) => setN(sliderToN(Number(e.currentTarget.value)))}
+                  aria-label="Number of loci for Boltzmann"
+                />
+                <span className="muted">{nn}</span>
+                <Row gap={4} wrap>
+                  {BOLTZMANN_N_JUMPS.map((v) => (
+                    <Pill key={`b-${v}`} active={v === nn} onClick={() => setN(v)}>
+                      {v}
+                    </Pill>
+                  ))}
+                </Row>
+              </Row>
+              <Row gap={12} wrap>
+                <span className="label">N</span>
+                <input
+                  type="range"
+                  min={NPOP_MIN}
+                  max={NPOP_MAX}
+                  step={1}
+                  value={npop}
+                  onChange={(e) => setNpop(Number(e.currentTarget.value))}
+                  aria-label="Population size N"
+                />
+                <span className="muted">{npop}</span>
+              </Row>
+              <Row gap={12} wrap>
+                <span className="label">α</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={ALPHA_SLIDER_STEPS}
+                  step={1}
+                  value={alphaToSlider(alpha)}
+                  onChange={(e) => setAlpha(sliderToAlpha(Number(e.currentTarget.value)))}
+                  aria-label="Dirichlet alpha"
+                />
+                <span className="muted">{alpha.toFixed(2)}</span>
+              </Row>
+              {boltz ? (
+                <BoltzmannReadout boltz={boltz} />
+              ) : (
+                <Text tone="secondary">n = {nn} is outside the slider range.</Text>
+              )}
+              <Text tone="secondary" size="small">
+                Implied α₀ = 2^n α = {formatSci(a0Implied)} · μ_→g = α/(4N) ={" "}
+                {(alpha / (4 * npop)).toExponential(2)}. Low ESS means {"W^{2N}"}{" "}
+                is very peaked; treat η and F* as a sketch.
+              </Text>
+            </Stack>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader>Boltzmann η_maint — α₀ = Kα fixed</CardHeader>
+          <CardBody>
+            <Stack gap={14}>
+              <Text>
+                Choose n and α₀. Then α(n) = α₀ / 2^n, so Kα stays constant. Same
+                N, Vs, z* as the α-fixed table. Default α₀ = 32 matches n = 4, α =
+                2.
+              </Text>
+              <Row gap={12} wrap>
+                <span className="label">n</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={SLIDER_STEPS}
+                  step={1}
+                  value={nToSlider(nn)}
+                  onChange={(e) => setN(sliderToN(Number(e.currentTarget.value)))}
+                  aria-label="Number of loci for fixed alpha0"
+                />
+                <strong>{nn}</strong>
+                <Row gap={4} wrap>
+                  {BOLTZMANN_N_JUMPS.map((v) => (
+                    <Pill key={`b0-${v}`} active={v === nn} onClick={() => setN(v)}>
+                      {v}
+                    </Pill>
+                  ))}
+                </Row>
+              </Row>
+              <Row gap={12} wrap>
+                <span className="label">α₀</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={ALPHA0_SLIDER_STEPS}
+                  step={1}
+                  value={alpha0ToSlider(alpha0)}
+                  onChange={(e) =>
+                    setAlpha0(sliderToAlpha0(Number(e.currentTarget.value)))
+                  }
+                  aria-label="Total Dirichlet concentration alpha 0"
+                />
+                <strong>{formatSci(alpha0)}</strong>
+                <Row gap={4} wrap>
+                  {ALPHA0_JUMPS.map((v) => (
+                    <Pill key={`a0-${v}`} active={v === alpha0} onClick={() => setAlpha0(v)}>
+                      {v}
+                    </Pill>
+                  ))}
+                  <Pill
+                    active={Math.abs(alpha0 - a0Implied) / Math.max(alpha0, 1) < 0.02}
+                    onClick={() =>
+                      setAlpha0(
+                        clampAlpha0(Number.isFinite(a0Implied) ? a0Implied : ALPHA0_DEFAULT),
+                      )
+                    }
+                  >
+                    = 2^n α
+                  </Pill>
+                </Row>
+              </Row>
+              <Row gap={8} wrap>
+                <Stat value={String(nn)} label="loci n" />
+                <Stat value={formatSci(alpha0)} label="α₀ = Kα" />
+                <Stat value={formatSci(aImplied)} label="α(n) = α₀/2^n" />
+              </Row>
+              <Row gap={12} wrap>
+                <span className="label">N</span>
+                <input
+                  type="range"
+                  min={NPOP_MIN}
+                  max={NPOP_MAX}
+                  step={1}
+                  value={npop}
+                  onChange={(e) => setNpop(Number(e.currentTarget.value))}
+                  aria-label="Population size N for fixed alpha0"
+                />
+                <span className="muted">{npop}</span>
+              </Row>
+              {boltz0 ? (
+                <BoltzmannReadout boltz={boltz0} />
+              ) : (
+                <Text tone="secondary">n = {nn} is outside the slider range.</Text>
+              )}
+              <Text tone="secondary" size="small">
+                Implied α(n) = α₀/2^n = {formatSci(aImplied)} · μ_→g = α/(4N) ={" "}
+                {(aImplied / (4 * npop)).toExponential(2)}. If the η decline with n
+                disappears here, the α-fixed result was mostly the changing
+                neutral equilibrium, not polygenicity.
+              </Text>
+            </Stack>
+          </CardBody>
+        </Card>
+
+        <Stack gap={8}>
+          <H3>Both scalings at this n</H3>
+          <Table
+            headers={["scaling", "α", "α₀ = Kα", "D bits", "⟨C⟩_*", "η_maint", "F* nats", "ESS"]}
+            rows={[
+              [
+                "α fixed",
+                formatSci(alpha),
+                formatSci(a0Implied),
+                boltz ? boltz.D.toFixed(3) : "—",
+                boltz ? boltz.C.toFixed(4) : "—",
+                boltz && Number.isFinite(boltz.eta) ? boltz.eta.toFixed(3) : "—",
+                boltz ? boltz.F.toFixed(4) : "—",
+                boltz ? boltz.ess.toFixed(1) : "—",
+              ],
+              [
+                "α₀ fixed",
+                formatSci(aImplied),
+                formatSci(alpha0),
+                boltz0 ? boltz0.D.toFixed(3) : "—",
+                boltz0 ? boltz0.C.toFixed(4) : "—",
+                boltz0 && Number.isFinite(boltz0.eta) ? boltz0.eta.toFixed(3) : "—",
+                boltz0 ? boltz0.F.toFixed(4) : "—",
+                boltz0 ? boltz0.ess.toFixed(1) : "—",
+              ],
+            ]}
+          />
+          <Text tone="secondary" size="small">
+            Same n, N, Vs, z*. Try α₀=4, N=50, Vs=0.0625, even n: η rises with
+            polygenicity. Default α₀=32 is near-flat. Large N × small Vs can
+            collapse ESS.
+          </Text>
+        </Stack>
 
         <Callout title="What this construction claims">
           If η_maint rises with n under this family, the advantage is
@@ -350,8 +612,10 @@ export default function App() {
             ]}
           />
           <Text tone="secondary" size="small">
-            Python will write JSON into <code>web/public/data/</code>; this page
-            will load it. No simulation runs in the browser.
+            Hamming-layer Boltzmann η, D, C, F* now run in the browser. Python
+            in <code>Polygenic Efficeincy/eta_maint_boltzmann.py</code> is the
+            same identities for offline sweeps. Optional JSON snapshots can
+            still go in <code>web/public/data/</code>.
           </Text>
         </Stack>
 
