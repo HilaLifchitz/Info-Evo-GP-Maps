@@ -31,6 +31,7 @@ The environment lives at `~/miniconda3/envs/miso` if it was created earlier.
 | [`regulatory networks/`](regulatory%20networks/README.md) | GP-map notes and figures (no code) |
 | [`docs/`](docs/README.md) | Papers and slides |
 | [`Polygenic Efficeincy/`](Polygenic%20Efficeincy/README.md) | Additive polygenic trait; maintenance efficiency $\eta_{\mathrm{maint}}(n)$ vs number of loci |
+| [`web/`](web/README.md) | GitHub Pages app for the polygenic sketch (sliders + lattice; JSON from Python later) |
 | `C.py` | Fitness-ratio diagnostic for a symmetric $\Sigma$ (any $n$) |
 
 Each folder has its own README with scripts, run commands, and findings.

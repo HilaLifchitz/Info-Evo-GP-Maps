@@ -80,6 +80,13 @@ dmypy.json
 *.out
 *.log
 *.json
+!package.json
+!package-lock.json
+!web/package.json
+!web/package-lock.json
+!web/tsconfig.json
+!web/tsconfig.node.json
+!web/public/data/README.md
 
 # Generated plot / cache directories
 2loci/plots/
@@ -109,6 +116,10 @@ types of mutations/results/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Node / GitHub Pages app
+node_modules/
+web/dist/
 
 # IDE files
 .vscode/
