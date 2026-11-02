@@ -2,7 +2,7 @@
 
 Standalone React copy of the Cursor canvas, for GitHub Pages.
 
-**[Explore the interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/)**
+**[Explore the interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/index.html)**
 
 ```bash
 cd web

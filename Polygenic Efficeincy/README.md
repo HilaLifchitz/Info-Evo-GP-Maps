@@ -2,7 +2,7 @@
 
 Same trait, more loci: does equilibrium **maintenance** of information get cheaper?
 
-**[Explore the interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/)**
+**[Explore the interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/index.html)**
 
 Source for that site: [`../web/`](../web/README.md). Lattice math is in [`../web/src/model.ts`](../web/src/model.ts). Cursor lab notebook: [`polygenic-maintenance-efficiency.canvas.tsx`](polygenic-maintenance-efficiency.canvas.tsx). Handoff notes: [`TODO_tomorrow.md`](TODO_tomorrow.md).
 

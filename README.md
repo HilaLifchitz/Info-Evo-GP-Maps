@@ -1,3 +1,13 @@
+# Polygenic efficiency
+
+Same trait, more loci: does equilibrium maintenance of information get cheaper?
+
+**[Explore the interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/index.html)**
+
+That link is the live lattice (sliders, fitness coloring). It is a different page from this README. If a tab still shows this text, the address is wrong or the tab is old — paste the URL above into a private window.
+
+---
+
 # Miso — information, epistasis, and Wright–Fisher dynamics
 
 Python research code for **finite-population** evolutionary dynamics, with an emphasis on:
@@ -8,8 +18,6 @@ Python research code for **finite-population** evolutionary dynamics, with an em
 - diffusion / Boltzmann approximations of the same objects
 
 GitHub: [HilaLifchitz/Info-Evo-GP-Maps](https://github.com/HilaLifchitz/Info-Evo-GP-Maps).
-
-**[Explore the interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/)** — polygenic lattice, sliders, and fitness coloring.
 
 ```bash
 conda env create -f environment.yml   # Python 3.11, numpy, scipy, matplotlib, seaborn, pandas, networkx
@@ -33,7 +41,7 @@ The environment lives at `~/miniconda3/envs/miso` if it was created earlier.
 | [`regulatory networks/`](regulatory%20networks/README.md) | GP-map notes and figures (no code) |
 | [`docs/`](docs/README.md) | Papers and slides |
 | [`Polygenic Efficeincy/`](Polygenic%20Efficeincy/README.md) | Additive polygenic trait; maintenance efficiency $\eta_{\mathrm{maint}}(n)$ vs number of loci |
-| [`web/`](web/README.md) | Live site: [interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/) |
+| [`web/`](web/README.md) | Live site: [interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/index.html) |
 | `C.py` | Fitness-ratio diagnostic for a symmetric $\Sigma$ (any $n$) |
 
 Each folder has its own README with scripts, run commands, and findings.
