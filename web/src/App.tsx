@@ -50,83 +50,125 @@ export default function App() {
           <H1>More genes, more efficient?</H1>
           <Text tone="secondary">
             Premise: same trait, same selection on the phenotype, more genes
-            coding it. Is there an advantage, in equilibrium maintenance
-            efficiency, to a trait being encoded by more loci rather than fewer
-            — once the phenotype and the selective environment are held fixed?
+            coding it (the word “same” will need a careful look, and a few
+            alternative definitions). We want to ask whether polygenicity
+            raises the efficiency with which selection maintains evolutionary
+            information at equilibrium. Said differently: Is there an
+            advantage, in equilibrium maintenance efficiency, to a trait being
+            encoded by more loci rather than fewer — once the phenotype and
+            the selective environment are held fixed?
           </Text>
         </Stack>
 
         <Stack gap={10}>
           <H2>Information maintained by selection</H2>
           <Text>
-            Let x = (x_g) over genotypes g be the genotype-frequency vector. We
-            measure the information maintained by selection as the KL divergence
-            between the stationary distributions under selection (ψ*) and
-            neutrality (φ):
+            Let x = (x_g) over genotypes g be the genotype-frequency vector, and
+            let X be a population state on the genotype-frequency simplex. We
+            measure the information as the KL divergence between the
+            distribution under selection at that state, {"ψ^X"}, and always
+            the neutral equilibrium, {"φ^{X^*}"}:
           </Text>
           <TeX
             name="dkl"
-            label="D_KL of psi-star given phi equals the integral over X of psi-star log psi-star over phi"
+            label="D_KL of psi^X given phi^{X-star} equals the integral of psi^X log psi^X over phi^{X-star}"
           />
           <Text>
-            X is the genotype-frequency simplex. This is how distinguishable the
-            selected equilibrium is from the neutral one; it is zero when the two
-            distributions coincide. For a trait encoded by n loci we write
+            The second argument is always the neutral equilibrium. Selection
+            does not have to be at equilibrium: X can be any state. It happens
+            that in this code we will only evaluate the quantity at selected
+            equilibrium. For convenience, when we talk about a trait encoded by
+            n loci we write
           </Text>
-          <TeX name="Dn" label="D(n) equals D_KL of psi_n-star given phi_n" />
+          <TeX
+            name="Dn"
+            label="D(n) equals D_KL of psi_n^{X-star} given phi_n^{X-star}"
+          />
         </Stack>
 
         <Stack gap={10}>
-          <H2>What we mean by efficiency</H2>
+          <H2>What we mean by maintenance efficiency</H2>
           <Text>
-            Information efficiency measures that information relative to the cost
-            of selection. Following Hledík et al., the increase in information
-            per generation on the genotype-frequency state space is bounded by
+            Information maintenance efficiency, as well is information
+            efficiency, measures the information accumulated by natural
+            selection relative to the cost of selection, C. The motivation for
+            this measure comes from the information-theoretic framework of
+            Hledík, Barton, and Tkačik, who showed that the rate of information
+            accumulation is formally bounded by a quantity, C, that can be
+            interpreted as a cost of selection. Importantly, this bound is
+            derived when information is measured over the genotype-frequency
+            state space, which provides the most complete description of the
+            population's genetic composition within our model. The bound takes
+            the form:
           </Text>
           <TeX
             name="bound"
-            label="Delta D of X^t is at most k N times expected cost at t"
+            label="D_KL of psi to the X(t+1) given phi-star, minus D_KL of psi to the X(t) given phi-star, equals D(X^{t+1}) minus D(X^t) equals Delta D of X^t, at most k N times expected cost at t"
           />
           <Text>
-            where k=1 for haploids and k=2 for diploids. Thus over a time
-            interval [0, T] we can define accumulation efficiency as
+            N stands for population size (N_e actually), and k is the mode of
+            reproduction: 1 for haploids, 2 for diploids. C(x) comes forth as an
+            upper bound, and because of its meaning this is why they called it a
+            cost.
+          </Text>
+          <Text>
+            First we need to clarify what is meant with this term. The cost of
+            selection quantifies the evolutionary expenditure associated with
+            favoring some genotypes over others. Conceptually, selection
+            increases the representation of fitter genotypes, but this comes at
+            a cost: individuals with lower fitness either die because of lower
+            fitness or simply, in the passage of time, stop being represented as
+            the population will be taken over by offspring of the fitter types.
+            This also reduces the population's reproductive output relative to a
+            hypothetical population in which all individuals had the highest
+            fitness. This idea is closely related to Haldane's cost of natural
+            selection, originally formulated in terms of the reproductive excess
+            required for the substitution of advantageous alleles, and to the
+            genetic load, which measures the reduction in mean fitness relative
+            to an optimal genotype.
+          </Text>
+          <H3>Cost C(x)</H3>
+          <Text>
+            The term cost of selection naturally appears as the KL divergence
+            between the genotype distributions after and before selection:
+          </Text>
+          <TeX
+            name="cost"
+            label="x-prime_g equals x_g omega(g) over x dot omega. C(x) equals D_KL of x-prime given x equals sum_g x-prime_g log x-prime_g over x_g"
+          />
+          <Text>
+            Here, (x · ω) is the mean fitness of the population. The cost
+            measures how strongly selection changes the genotype distribution in
+            a single generation. It is zero when selection leaves genotype
+            frequencies unchanged and increases as the distributions become more
+            distinguishable.
+          </Text>
+          <Text>
+            This naturally employs a natural measure for the efficiency of
+            information accumulation, and therefore over a time interval [0, T]
+            we can define accumulation efficiency as
           </Text>
           <TeX
             name="eta_T"
             label="eta_T equals D(X^T) minus D(X^0), over k N times the sum of expected costs"
           />
           <Text>
-            At equilibrium ΔD = 0, but selection still pays a cost to hold the
-            population away from φ. Maintenance efficiency is the same ratio
-            with the stored information D_eq (that is D(n) for an n-locus
-            encoding) in the numerator:
+            Selection can increase this divergence, but the rate of this
+            information gain is bounded by the cost incurred. Importantly, even
+            at evolutionary equilibrium, when information is no longer
+            accumulating, selection may continue to incur a cost by
+            counteracting mutation and genetic drift. This motivates the notion
+            of maintenance efficiency: how much information about the fitness
+            landscape can be maintained for a given ongoing cost of selection.
           </Text>
-          <Card>
-            <CardBody>
-              <Stack gap={8}>
-                <TeX
-                  name="eta_maint_eq"
-                  label="eta_maint equals D_eq over k N times expected cost at equilibrium"
-                />
-                <Text tone="secondary" size="small">
-                  Information sitting at equilibrium per unit of ongoing
-                  selective cost — not the rate at which new information is
-                  accumulated.
-                </Text>
-              </Stack>
-            </CardBody>
-          </Card>
-        </Stack>
-
-        <Stack gap={8}>
-          <H3>Cost C(x)</H3>
-          <Text>
-            At a population state x, selection produces a post-selection
-            distribution x′ with
+          <TeX
+            name="eta_maint_eq"
+            label="eta_maint equals D_eq over k N times expected cost at equilibrium"
+          />
+          <Text tone="secondary" size="small">
+            Information sitting at equilibrium per unit of ongoing selective
+            cost — not the rate at which new information is accumulated.
           </Text>
-          <TeX name="xprime" label="x-prime_g equals x_g omega(g) over x dot omega" />
-          <Text>The cost is the KL from after-selection back to before:</Text>
-          <TeX name="cost" label="C(x) equals D_KL of x-prime given x" />
         </Stack>
 
         <Divider />
