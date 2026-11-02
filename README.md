@@ -7,7 +7,9 @@ Python research code for **finite-population** evolutionary dynamics, with an em
 - how **epistasis** $\varepsilon_{12}$ shapes both the *equilibrium* and the *speed* of adaptation
 - diffusion / Boltzmann approximations of the same objects
 
-GitHub: [HilaLifchitz/project-M](https://github.com/HilaLifchitz/project-M).
+GitHub: [HilaLifchitz/Info-Evo-GP-Maps](https://github.com/HilaLifchitz/Info-Evo-GP-Maps).
+
+**[Explore the interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/)** — polygenic lattice, sliders, and fitness coloring.
 
 ```bash
 conda env create -f environment.yml   # Python 3.11, numpy, scipy, matplotlib, seaborn, pandas, networkx
@@ -31,7 +33,7 @@ The environment lives at `~/miniconda3/envs/miso` if it was created earlier.
 | [`regulatory networks/`](regulatory%20networks/README.md) | GP-map notes and figures (no code) |
 | [`docs/`](docs/README.md) | Papers and slides |
 | [`Polygenic Efficeincy/`](Polygenic%20Efficeincy/README.md) | Additive polygenic trait; maintenance efficiency $\eta_{\mathrm{maint}}(n)$ vs number of loci |
-| [`web/`](web/README.md) | GitHub Pages app for the polygenic sketch (sliders + lattice; JSON from Python later) |
+| [`web/`](web/README.md) | Live site: [interactive visualization](https://hilalifchitz.github.io/Info-Evo-GP-Maps/) |
 | `C.py` | Fitness-ratio diagnostic for a symmetric $\Sigma$ (any $n$) |
 
 Each folder has its own README with scripts, run commands, and findings.
