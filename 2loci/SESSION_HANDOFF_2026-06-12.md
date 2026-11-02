@@ -13,7 +13,6 @@ Two threads:
    using a tweaked **conditional alpha** because our mutation matrix is not
    parent-independent.
 
-
 # Part A — KL-dip work (continued from 2026-06-11)
 
 ## Sign / cancellation panels
@@ -100,7 +99,6 @@ correctly gives zero; the positive fitted offset is second-order.
 At u=0.3 example (1e-3, -5e-4):
   fit = -4.74e-4,  Cov/Var = -3.49e-4,  -2/3 sum = -3.33e-4
 
-
 # Part B — Discrete vs diffusion equilibria; conditional alpha
 
 ## What we compare
@@ -182,7 +180,6 @@ Then softmax over interior points to normalize.
 Independent per-locus: P(0->0)=1-u, P(0->1)=u, P(1->0)=v, P(1->1)=1-v.
 Joint M_ij = product of locus factors for source genotype i -> target j.
 
-
 # Cached data (eps12 dip robustness)
 
     plots/eps12_dip_robustness/
@@ -199,7 +196,6 @@ Joint M_ij = product of locus factors for source genotype i -> target j.
 Note: data_u_sign6.npz is referenced in sign_pairs2 but may not exist on disk
 if all values were seeded without entering the fit loop; sign_pairs2 seeds from
 sign4b/sign4/merged/sum0 instead.
-
 
 # How to run
 
@@ -221,7 +217,6 @@ python 2loci/selection_diffusion_vs_chain.py
 python 2loci/allele_diffusion_vs_chain.py
 ```
 
-
 # Open next steps
 
 1. **Equilibrium agreement revisit:** rerun discrete-vs-diffusion comparison at
@@ -238,7 +233,6 @@ python 2loci/allele_diffusion_vs_chain.py
 
 5. **Ploidy / diploid diffusion** (from 2026-06-10 handoff): chain is haploid
    Beta(2Nu); naive N->2N diploid diffusion fails.
-
 
 # Prior session context
 

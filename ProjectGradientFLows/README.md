@@ -8,21 +8,21 @@ This repository implements numerical solvers for gradient flows using the **Jord
 
 The JKO scheme is a **minimizing movement** approach to solving gradient flow PDEs. Instead of discretizing the PDE directly, we solve a sequence of optimization problems:
 
-\[
+$$
 \rho^{k+1} \in \arg\min_{\rho} \left[ F(\rho) + \frac{1}{2\tau} W_2^2(\rho, \rho^k) \right]
-\]
+$$
 
 where:
-- \(F(\rho)\) is a functional (e.g., entropy \(F(\rho) = \int \rho \log \rho \, dx\))
-- \(W_2\) is the 2-Wasserstein distance (optimal transport metric)
-- \(\tau > 0\) is the time step
+- $F(\rho)$ is a functional (e.g., entropy $F(\rho) = \int \rho \log \rho \, dx$)
+- $W_2$ is the 2-Wasserstein distance (optimal transport metric)
+- $\tau > 0$ is the time step
 
-For the **heat equation** \(\partial_t \rho = \Delta \rho\) with Neumann (reflecting) boundary conditions, this JKO scheme is theoretically equivalent to implicit Euler, making it a perfect test case.
+For the **heat equation** $\partial_t \rho = \Delta \rho$ with Neumann (reflecting) boundary conditions, this JKO scheme is theoretically equivalent to implicit Euler, making it a perfect test case.
 
 ### Why This Matters
 
-1. **1D is "easy"**: In 1D, \(W_2\) can be computed via quantile functions, making JKO straightforward.
-2. **2D+ is hard**: In higher dimensions, computing \(W_2\) becomes the bottleneck. We use **dynamic optimal transport** (Benamou–Brenier formulation) to reformulate the JKO step as a convex optimization problem.
+1. **1D is "easy"**: In 1D, $W_2$ can be computed via quantile functions, making JKO straightforward.
+2. **2D+ is hard**: In higher dimensions, computing $W_2$ becomes the bottleneck. We use **dynamic optimal transport** (Benamou–Brenier formulation) to reformulate the JKO step as a convex optimization problem.
 3. **Future goal**: Extend to non-Euclidean geometries and variable diffusion (Fokker–Planck with space-dependent coefficients), where JKO is more natural than traditional PDE discretizations.
 
 ---
@@ -77,19 +77,19 @@ Initial implementation (likely superseded by later versions).
 
 #### `2D_HeatEquation.py` ⭐ **Main 2D Implementation**
 
-Implements the 2D heat equation on a square \([0,1] \times [0,1]\) with Neumann boundary conditions using:
+Implements the 2D heat equation on a square $[0,1] \times [0,1]$ with Neumann boundary conditions using:
 
 1. **PDE sanity check**: Implicit Euler (ADI split or full unsplit)
 2. **JKO via dynamic OT**: Benamou–Brenier formulation solved with Chambolle–Pock primal–dual algorithm
 
 **Why dynamic OT?**
-In 2D, we can't use the quantile trick. Instead, we reformulate \(W_2^2(\rho_0, \rho_1)\) as:
+In 2D, we can't use the quantile trick. Instead, we reformulate $W_2^2(\rho_0, \rho_1)$ as:
 
-\[
+$$
 W_2^2(\rho_0, \rho_1) = \min_{\rho_t, m_t} \int_0^1 \int \frac{|m_t|^2}{\rho_t} \, dx \, dt
-\]
+$$
 
-subject to the continuity equation \(\partial_t \rho_t + \nabla \cdot m_t = 0\) with \(\rho(0) = \rho_0\), \(\rho(1) = \rho_1\).
+subject to the continuity equation $\partial_t \rho_t + \nabla \cdot m_t = 0$ with $\rho(0) = \rho_0$, $\rho(1) = \rho_1$.
 
 This gives us a **convex optimization problem** over space-time that we solve with primal–dual methods.
 
@@ -128,10 +128,10 @@ python 2D_HeatEquation.py --n 48 --tau 5e-4 --steps 30 --euler-solver full --plo
 Implements diffusion on the **3D simplex** (4 components) using the **Shahshahani metric**, which corresponds to the JKO scheme for entropy under the Fisher/Shahshahani geometry. This script provides:
 
 - 3D simplex grid discretization via a masked Cartesian cube
-- Shahshahani diffusion tensor \(B(x)\) for the 3D simplex
+- Shahshahani diffusion tensor $B(x)$ for the 3D simplex
 - **Implicit Euler** step (CG solve) as the JKO-equivalent update
 - **Explicit Euler** step for sanity checks
-- 2D marginal visualization (integrate over \(x_3\))
+- 2D marginal visualization (integrate over $x_3$)
 
 **Usage:**
 ```bash
@@ -141,7 +141,7 @@ python 3D_Simplex_Shahshahani.py --n 32 --tau 1e-4 --steps 30 --scheme implicit 
 **Key parameters:**
 - `--n`: Grid resolution per axis (masked to the simplex)
 - `--tau`: Time step
-- `--ne`: Effective population size (scales \(B(x)\))
+- `--ne`: Effective population size (scales $B(x)$)
 - `--scheme`: `implicit` (JKO-equivalent) or `explicit`
 - `--cg-tol`, `--cg-max-iter`: Linear solver settings
 
@@ -153,51 +153,51 @@ python 3D_Simplex_Shahshahani.py --n 32 --tau 1e-4 --steps 30 --scheme implicit 
 
 The 1D/2D heat equation:
 
-\[
+$$
 \partial_t \rho = \Delta \rho
-\]
+$$
 
 is the Wasserstein gradient flow of the **entropy functional**:
 
-\[
+$$
 F(\rho) = \int \rho(x) \log \rho(x) \, dx
-\]
+$$
 
-The first variation is \(\delta F / \delta \rho = \log \rho + 1\), and the gradient flow in \(W_2\) is:
+The first variation is $\delta F / \delta \rho = \log \rho + 1$, and the gradient flow in $W_2$ is:
 
-\[
+$$
 \partial_t \rho = \nabla \cdot \left( \rho \nabla \frac{\delta F}{\delta \rho} \right) = \nabla \cdot (\rho \nabla (\log \rho + 1)) = \Delta \rho
-\]
+$$
 
 ### JKO Scheme (Minimizing Movement)
 
-Given \(\rho^k\) and time step \(\tau\), the next iterate is:
+Given $\rho^k$ and time step $\tau$, the next iterate is:
 
-\[
+$$
 \rho^{k+1} \in \arg\min_{\rho \geq 0, \int \rho = 1} \left[ F(\rho) + \frac{1}{2\tau} W_2^2(\rho, \rho^k) \right]
-\]
+$$
 
 ### 1D: Quantile Formulation
 
-In 1D, we can rewrite everything in terms of the **quantile function** \(Q(u) = F^{-1}(u)\):
+In 1D, we can rewrite everything in terms of the **quantile function** $Q(u) = F^{-1}(u)$:
 
-- **Entropy**: \(\int \rho \log \rho \, dx = -\int_0^1 \log Q'(u) \, du\) (up to constants)
-- **Wasserstein**: \(W_2^2(\rho, \rho^k) = \int_0^1 |Q(u) - Q^k(u)|^2 \, du\)
+- **Entropy**: $\int \rho \log \rho \, dx = -\int_0^1 \log Q'(u) \, du$ (up to constants)
+- **Wasserstein**: $W_2^2(\rho, \rho^k) = \int_0^1 |Q(u) - Q^k(u)|^2 \, du$
 
-This reduces the JKO step to a **convex optimization problem over monotone increasing functions** \(Q(u)\).
+This reduces the JKO step to a **convex optimization problem over monotone increasing functions** $Q(u)$.
 
 ### 2D: Dynamic OT Formulation
 
 In 2D+, we use the **Benamou–Brenier** reformulation:
 
-\[
+$$
 W_2^2(\rho_0, \rho_1) = \min_{\rho_t, m_t} \int_0^1 \int \frac{|m_t(x)|^2}{\rho_t(x)} \, dx \, dt
-\]
+$$
 
 subject to:
-- Continuity: \(\partial_t \rho_t + \nabla \cdot m_t = 0\)
-- Boundary: \(\rho(0) = \rho_0\), \(\rho(1) = \rho_1\)
-- No-flux BCs: \(m_t \cdot n = 0\) on boundaries
+- Continuity: $\partial_t \rho_t + \nabla \cdot m_t = 0$
+- Boundary: $\rho(0) = \rho_0$, $\rho(1) = \rho_1$
+- No-flux BCs: $m_t \cdot n = 0$ on boundaries
 
 This is a **convex problem** that we solve with **Chambolle–Pock** (primal–dual) algorithm.
 
@@ -270,8 +270,8 @@ Not JKO — static fitness geometry on the genotype simplex, used for intuition.
 
 | File | Purpose |
 |------|---------|
-| `AdptiveLandscapeSimulator/ExAdaptiveLandscape.py` | \(n\) loci, pairwise epistasis, slice plots of \(\omega(g)\) |
-| `AdptiveLandscapeSimulator/ExAdaptiveLandscape2Loci.py` | Two loci with LD coordinate \(D\); genotype frequencies from \((f_1,f_2,D)\) |
+| `AdptiveLandscapeSimulator/ExAdaptiveLandscape.py` | $n$ loci, pairwise epistasis, slice plots of $\omega(g)$ |
+| `AdptiveLandscapeSimulator/ExAdaptiveLandscape2Loci.py` | Two loci with LD coordinate $D$; genotype frequencies from $(f_1,f_2,D)$ |
 | `3D_Simplex_Shahshahani.py` | Diffusion / JKO-style flow on the 3-simplex with the Shahshahani metric |
 
 Config sketch: `my.yaml`.
@@ -281,7 +281,7 @@ Config sketch: `my.yaml`.
 ## Future Work
 
 1. **Non-Euclidean geometries**: Extend to manifolds (geodesic cost instead of Euclidean)
-2. **Variable diffusion**: Fokker–Planck with space-dependent coefficients \(D(x)\)
+2. **Variable diffusion**: Fokker–Planck with space-dependent coefficients $D(x)$
 3. **Better inner solvers**: Adaptive step sizes, diagonal preconditioning for primal–dual
 4. **3D support**: Scale dynamic OT to 3D grids
 5. **Sinkhorn alternative**: Implement entropic OT (Sinkhorn) as an alternative to dynamic OT

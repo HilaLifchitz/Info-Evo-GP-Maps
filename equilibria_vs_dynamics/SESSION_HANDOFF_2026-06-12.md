@@ -8,7 +8,6 @@ from the neutral start psi(0)=phi — especially over the **first ~20 generation
 
 A background re-run was started but is likely redundant (see below).
 
-
 # What already exists in this folder
 
 ## Scripts
@@ -83,7 +82,6 @@ Ns ~ 0.3–0.6 with s1=-0.02):
 5. **Markov chain KL_eq ≈ diffusion KL_eq** only in weak selection / high-r LE
    limit; at r=0 use discrete psi* as ground truth.
 
-
 # Reinterpretation for today's question
 
 ## What is "equilibrium information"?
@@ -121,7 +119,6 @@ and early accumulation rate are smallest.
   (crossing curves, identical KL_eq different speeds) — different parameter regime.
 - t_half not reached in weak regime within 800 gens — early slope is the right metric.
 
-
 # Background job started today (may be redundant)
 
 ```bash
@@ -138,7 +135,6 @@ still be running (matrix builds are slow, conda buffering may delay log output).
 ls equilibria_vs_dynamics/results/pred_grid_early20/
 # or compare to existing pred_grid/
 ```
-
 
 # Suggested next steps when you return
 
@@ -165,7 +161,6 @@ ls equilibria_vs_dynamics/results/pred_grid_early20/
 5. **Stage B** in predictiveness_grid (`SENSITIVITY=True`): vary u,v,r for one
    background — does predictiveness survive stronger mutation / recombination?
 
-
 # How to run
 
 ```bash
@@ -181,7 +176,6 @@ python eps12_score_vs_speed.py --out-dir results/my_run
 
 # trajectories colored by equilibrium score (edit script to call run_trajectories)
 ```
-
 
 # Related handoffs
 
