@@ -87,6 +87,7 @@ dmypy.json
 !web/tsconfig.json
 !web/tsconfig.node.json
 !web/public/data/README.md
+!Polygenic Efficeincy/eta_vs_n_simpson_large.json
 
 # Generated plot / cache directories
 2loci/plots/
@@ -102,6 +103,8 @@ types of mutations/results/
 *.jpeg
 *.gif
 *.pdf
+!Polygenic Efficeincy/figures/*.png
+!Polygenic Efficeincy/figures/*.pdf
 
 # Temporary files
 *.tmp

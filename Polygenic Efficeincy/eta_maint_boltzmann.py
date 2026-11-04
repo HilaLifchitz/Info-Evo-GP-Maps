@@ -99,6 +99,46 @@ def logmeanexp(a: np.ndarray) -> float:
     return m + math.log(float(np.mean(np.exp(a - m))))
 
 
+def expected_simpson(alpha: float, n: int, log_alpha: float | None = None) -> float:
+    """E[Σ x_g²] = (α+1)/(Kα+1) for Dirichlet(α,…,α) on K=2ⁿ types.
+
+    Pass log_alpha when α itself underflows (n ≳ 700 at fixed c).
+    """
+    la = math.log(alpha) if log_alpha is None else log_alpha
+    if not math.isfinite(la):
+        return float("nan")
+    alpha0 = math.exp(la + n * math.log(2.0))
+    a = math.exp(la)
+    if not math.isfinite(alpha0):
+        return 0.0
+    if not (a > 0.0) or not math.isfinite(a):
+        return 1.0 / (alpha0 + 1.0)
+    return (a + 1.0) / (alpha0 + 1.0)
+
+
+def log_alpha_from_simpson(c: float, n: int) -> float:
+    """log α = log(1−c) − log(c 2ⁿ − 1). Requires 1/K < c < 1."""
+    if n < 1:
+        raise ValueError(f"n must be ≥ 1; got {n}")
+    if not (0.0 < c < 1.0):
+        raise ValueError(f"need 0 < c < 1; got c={c}")
+    log_invK = -n * math.log(2.0)
+    if c <= math.exp(log_invK):
+        raise ValueError(f"need c > 1/K with K=2^{n}; got c={c}")
+    log_cK = math.log(c) + n * math.log(2.0)
+    if log_cK > 40.0:
+        return math.log(1.0 - c) - log_cK
+    den = c * math.exp(n * math.log(2.0)) - 1.0
+    if den <= 0.0:
+        raise ValueError(f"cK−1 must be > 0; got {den}")
+    return math.log(1.0 - c) - math.log(den)
+
+
+def alpha_from_simpson(c: float, n: int) -> float:
+    """α(K) = (1−c)/(cK − 1) so E[S]=c. Requires 1/K < c < 1."""
+    return math.exp(log_alpha_from_simpson(c, n))
+
+
 def compute(
     n: int,
     N: float,
@@ -109,12 +149,18 @@ def compute(
     alpha: float,
     alpha_mode: str,
     alpha0: float | None = None,
+    simpson_c: float | None = None,
 ) -> dict:
     if alpha_mode != "direct":
         raise NotImplementedError(
             "cond-α is not wired yet; use --alpha-mode direct and set --alpha."
         )
-    if alpha0 is not None:
+    if simpson_c is not None:
+        log_alpha = log_alpha_from_simpson(simpson_c, n)
+        alpha_used = math.exp(log_alpha)
+        alpha0 = math.exp(log_alpha + n * math.log(2.0))
+        scaling = "simpson_c_fixed"
+    elif alpha0 is not None:
         if alpha0 <= 0:
             raise ValueError("α₀ must be > 0")
         log_alpha = math.log(alpha0) - n * math.log(2.0)
@@ -174,7 +220,9 @@ def compute(
         "alpha_mode": alpha_mode,
         "scaling": scaling,
         "alpha": alpha_used,
+        "log_alpha": log_alpha,
         "alpha0": alpha0,
+        "simpson_c": expected_simpson(alpha_used, n, log_alpha=log_alpha),
         "mu_into_implied": mu_in,
         "Vs": vs,
         "z_star": z_star,
@@ -214,6 +262,12 @@ def main() -> None:
         default=None,
         help="If set, hold α₀ = Kα = 2^n α fixed and use α(n)=α₀/2^n (overrides --alpha).",
     )
+    p.add_argument(
+        "--simpson-c",
+        type=float,
+        default=None,
+        help="If set, hold E[S]=(α+1)/(Kα+1)=c and use α=(1-c)/(cK-1) (overrides --alpha/--alpha0).",
+    )
     p.add_argument("--Vs", type=float, default=0.0625)
     p.add_argument("--z-star", type=float, default=0.5)
     p.add_argument("--samples", type=int, default=20000)
@@ -231,10 +285,11 @@ def main() -> None:
         alpha=args.alpha,
         alpha_mode=args.alpha_mode,
         alpha0=args.alpha0,
+        simpson_c=args.simpson_c,
     )
     print("Boltzmann on Hamming layers  ρ ∝ W^{2N} Π x_g^{α−1}  (exact reduction)")
     print(f"  n={res['n']}  layers={res['n_layers']}  K={res['K_genotypes']}  N={res['N']}")
-    print(f"  scaling={res['scaling']}  α={res['alpha']:.6g}  α₀={res['alpha0']:.6g}")
+    print(f"  scaling={res['scaling']}  α={res['alpha']:.6g}  α₀={res['alpha0']:.6g}  E[S]={res['simpson_c']:.6g}")
     print(f"  α-mode={res['alpha_mode']}  (μ_→g=α/(4N)={res['mu_into_implied']:.6g})")
     print(f"  Vs={res['Vs']}  z*={res['z_star']}  samples={res['n_samples']}  ESS={res['ess']:.4g}")
     print(f"  D      = KL(ρ* ‖ ρ_φ)   = {res['D_bits']:.6g} bits")

@@ -107,4 +107,8 @@ th { color: var(--muted); font-weight: 600; }
 
 .label { font-weight: 600; }
 input[type="range"] { width: 220px; accent-color: var(--accent); cursor: pointer; }
+input[type="range"].range-armed {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em; }

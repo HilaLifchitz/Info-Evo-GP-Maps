@@ -228,6 +228,184 @@ export function impliedAlpha(alpha0: number, n: number): number {
   return Math.exp(logAlphaFromAlpha0(alpha0, n));
 }
 
+export const SIMPSON_MIN = 0.05;
+export const SIMPSON_MAX = 0.9;
+export const SIMPSON_DEFAULT = 0.3;
+export const SIMPSON_SLIDER_STEPS = 400;
+export const SIMPSON_JUMPS = [0.26, 0.3, 0.4, 0.5, 0.6, 0.75];
+export const DEMO_N_JUMPS = [4, 8, 16, 32, 64, 128, 256];
+
+export type DemoScaling = "c" | "alpha0";
+export type DemoRegime = {
+  id: string;
+  label: string;
+  hint: string;
+  scaling: DemoScaling;
+  n: number;
+  npop: number;
+  vs: number;
+  zStar: number;
+  c?: number;
+  alpha0?: number;
+  sweep: { n: number; eta: number }[];
+};
+
+/** Offline Hamming-layer Boltzmann; even n. For the talk, pick one and step n. */
+export const DEMO_REGIMES: DemoRegime[] = [
+  {
+    id: "default-c",
+    label: "default c=0.3",
+    hint: "E[S]=c held. η ≈ 7 → 19 → 36 from n=4 to 16 to 256, then slows.",
+    scaling: "c",
+    n: 4,
+    npop: 50,
+    vs: 0.0625,
+    zStar: 0.5,
+    c: 0.3,
+    sweep: [
+      { n: 4, eta: 7.25 },
+      { n: 8, eta: 14.6 },
+      { n: 16, eta: 18.8 },
+      { n: 32, eta: 22.8 },
+      { n: 64, eta: 27.5 },
+      { n: 128, eta: 32.9 },
+      { n: 256, eta: 36.1 },
+      { n: 1000, eta: 38.2 },
+    ],
+  },
+  {
+    id: "poster",
+    label: "steep: c=0.75, N=100",
+    hint: "Best live demo. η ≈ 27 → 103 → 375 from n=4 to 16 to 256.",
+    scaling: "c",
+    n: 4,
+    npop: 100,
+    vs: 0.0625,
+    zStar: 0.5,
+    c: 0.75,
+    sweep: [
+      { n: 4, eta: 26.7 },
+      { n: 8, eta: 57.5 },
+      { n: 16, eta: 103 },
+      { n: 32, eta: 164 },
+      { n: 64, eta: 206 },
+      { n: 128, eta: 274 },
+      { n: 256, eta: 375 },
+      { n: 1000, eta: 597 },
+    ],
+  },
+  {
+    id: "strong",
+    label: "stronger selection",
+    hint: "c=0.3, Vs=0.02. Rise continues through n=1000.",
+    scaling: "c",
+    n: 4,
+    npop: 50,
+    vs: 0.02,
+    zStar: 0.5,
+    c: 0.3,
+    sweep: [
+      { n: 4, eta: 4.04 },
+      { n: 8, eta: 8.68 },
+      { n: 16, eta: 12.2 },
+      { n: 32, eta: 17.9 },
+      { n: 64, eta: 21.9 },
+      { n: 128, eta: 24.7 },
+      { n: 256, eta: 31.2 },
+      { n: 1000, eta: 38.4 },
+    ],
+  },
+  {
+    id: "alpha0-4",
+    label: "α₀=4 fixed",
+    hint: "Other same-neutral: hold Kα. Even n. η ≈ 9.6 → 22.9 from n=4 to 256.",
+    scaling: "alpha0",
+    n: 4,
+    npop: 50,
+    vs: 0.0625,
+    zStar: 0.5,
+    alpha0: 4,
+    sweep: [
+      { n: 4, eta: 9.63 },
+      { n: 8, eta: 14.4 },
+      { n: 16, eta: 11.4 },
+      { n: 32, eta: 15.7 },
+      { n: 64, eta: 18.5 },
+      { n: 128, eta: 18.9 },
+      { n: 256, eta: 22.9 },
+    ],
+  },
+];
+
+export function demoMatches(
+  r: DemoRegime,
+  npop: number,
+  vs: number,
+  zStar: number,
+  simpsonC: number,
+  alpha0: number,
+): boolean {
+  if (r.npop !== npop) return false;
+  if (Math.abs(r.vs - vs) > 1e-6) return false;
+  if (Math.abs(r.zStar - zStar) > 1e-6) return false;
+  if (r.scaling === "c") return Math.abs((r.c ?? 0) - simpsonC) < 0.005;
+  return Math.abs((r.alpha0 ?? 0) - alpha0) < 1e-9;
+}
+
+export function clampSimpson(value: number): number {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return SIMPSON_DEFAULT;
+  return Math.min(SIMPSON_MAX, Math.max(SIMPSON_MIN, x));
+}
+
+export function simpsonToSlider(c: number): number {
+  return Math.round(
+    SIMPSON_SLIDER_STEPS * ((c - SIMPSON_MIN) / (SIMPSON_MAX - SIMPSON_MIN)),
+  );
+}
+
+export function sliderToSimpson(t: number): number {
+  return clampSimpson(
+    SIMPSON_MIN + (Number(t) / SIMPSON_SLIDER_STEPS) * (SIMPSON_MAX - SIMPSON_MIN),
+  );
+}
+
+export function simpsonFloor(n: number): number {
+  if (n >= 50) return 0;
+  return 2 ** -n;
+}
+
+export function expectedSimpson(alpha: number, n: number, logAlpha?: number): number {
+  const la =
+    logAlpha !== undefined && Number.isFinite(logAlpha)
+      ? logAlpha
+      : Math.log(alpha);
+  if (!Number.isFinite(la)) return NaN;
+  const alpha0 = Math.exp(la + n * Math.LN2);
+  const a = Math.exp(la);
+  if (!Number.isFinite(alpha0)) return 0;
+  if (!(a > 0) || !Number.isFinite(a)) return 1 / (alpha0 + 1);
+  return (a + 1) / (alpha0 + 1);
+}
+
+export function alphaFromSimpson(
+  c: number,
+  n: number,
+): { ok: true; logAlpha: number; alpha: number; alpha0: number } | { ok: false } {
+  const floor = simpsonFloor(n);
+  if (!(c > floor && c < 1)) return { ok: false };
+  if (n >= 50) {
+    const logAlpha = Math.log(1 - c) - Math.log(c) - n * Math.LN2;
+    return { ok: true, logAlpha, alpha: Math.exp(logAlpha), alpha0: (1 - c) / c };
+  }
+  const K = 2 ** n;
+  const den = c * K - 1;
+  if (den <= 0) return { ok: false };
+  const a = (1 - c) / den;
+  if (!(a > 0) || !Number.isFinite(a)) return { ok: false };
+  return { ok: true, logAlpha: Math.log(a), alpha: a, alpha0: K * a };
+}
+
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;
   return () => {

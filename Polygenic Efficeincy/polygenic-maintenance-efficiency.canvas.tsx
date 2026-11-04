@@ -15,6 +15,7 @@ import {
   Table,
   Text,
   useCanvasState,
+  useEffect,
   useHostTheme,
   useMemo,
 } from "cursor/canvas";
@@ -171,6 +172,130 @@ const ALPHA0_MAX = 65536;
 const ALPHA0_DEFAULT = 32;
 const ALPHA0_SLIDER_STEPS = 400;
 const ALPHA0_JUMPS = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192];
+/** Target E[S(X)] = (α+1)/(Kα+1) for symmetric Dirichlet. Need 1/K < c < 1. */
+const SIMPSON_MIN = 0.05;
+const SIMPSON_MAX = 0.9;
+const SIMPSON_DEFAULT = 0.3;
+const SIMPSON_SLIDER_STEPS = 400;
+const SIMPSON_JUMPS = [0.26, 0.3, 0.4, 0.5, 0.6, 0.75];
+const DEMO_N_JUMPS = [4, 8, 16, 32, 64, 128, 256];
+
+type DemoScaling = "c" | "alpha0";
+type DemoRegime = {
+  id: string;
+  label: string;
+  hint: string;
+  scaling: DemoScaling;
+  n: number;
+  npop: number;
+  vs: number;
+  zStar: number;
+  c?: number;
+  alpha0?: number;
+  sweep: { n: number; eta: number }[];
+};
+
+/** Offline Hamming-layer Boltzmann; even n. For the talk, pick one and step n. */
+const DEMO_REGIMES: DemoRegime[] = [
+  {
+    id: "default-c",
+    label: "default c=0.3",
+    hint: "E[S]=c held. η ≈ 7 → 19 → 36 from n=4 to 16 to 256, then slows.",
+    scaling: "c",
+    n: 4,
+    npop: 50,
+    vs: 0.0625,
+    zStar: 0.5,
+    c: 0.3,
+    sweep: [
+      { n: 4, eta: 7.25 },
+      { n: 8, eta: 14.6 },
+      { n: 16, eta: 18.8 },
+      { n: 32, eta: 22.8 },
+      { n: 64, eta: 27.5 },
+      { n: 128, eta: 32.9 },
+      { n: 256, eta: 36.1 },
+      { n: 1000, eta: 38.2 },
+    ],
+  },
+  {
+    id: "poster",
+    label: "steep: c=0.75, N=100",
+    hint: "Best live demo. η ≈ 27 → 103 → 375 from n=4 to 16 to 256.",
+    scaling: "c",
+    n: 4,
+    npop: 100,
+    vs: 0.0625,
+    zStar: 0.5,
+    c: 0.75,
+    sweep: [
+      { n: 4, eta: 26.7 },
+      { n: 8, eta: 57.5 },
+      { n: 16, eta: 103 },
+      { n: 32, eta: 164 },
+      { n: 64, eta: 206 },
+      { n: 128, eta: 274 },
+      { n: 256, eta: 375 },
+      { n: 1000, eta: 597 },
+    ],
+  },
+  {
+    id: "strong",
+    label: "stronger selection",
+    hint: "c=0.3, Vs=0.02. Rise continues through n=1000.",
+    scaling: "c",
+    n: 4,
+    npop: 50,
+    vs: 0.02,
+    zStar: 0.5,
+    c: 0.3,
+    sweep: [
+      { n: 4, eta: 4.04 },
+      { n: 8, eta: 8.68 },
+      { n: 16, eta: 12.2 },
+      { n: 32, eta: 17.9 },
+      { n: 64, eta: 21.9 },
+      { n: 128, eta: 24.7 },
+      { n: 256, eta: 31.2 },
+      { n: 1000, eta: 38.4 },
+    ],
+  },
+  {
+    id: "alpha0-4",
+    label: "α₀=4 fixed",
+    hint: "Other same-neutral: hold Kα. Even n. η ≈ 9.6 → 22.9 from n=4 to 256.",
+    scaling: "alpha0",
+    n: 4,
+    npop: 50,
+    vs: 0.0625,
+    zStar: 0.5,
+    alpha0: 4,
+    sweep: [
+      { n: 4, eta: 9.63 },
+      { n: 8, eta: 14.4 },
+      { n: 16, eta: 11.4 },
+      { n: 32, eta: 15.7 },
+      { n: 64, eta: 18.5 },
+      { n: 128, eta: 18.9 },
+      { n: 256, eta: 22.9 },
+    ],
+  },
+];
+
+function demoMatches(
+  r: DemoRegime,
+  npop: number,
+  vs: number,
+  zStar: number,
+  simpsonC: number,
+  alpha0: number,
+): boolean {
+  if (r.npop !== npop) return false;
+  if (Math.abs(r.vs - vs) > 1e-6) return false;
+  if (Math.abs(r.zStar - zStar) > 1e-6) return false;
+  if (r.scaling === "c") return Math.abs((r.c ?? 0) - simpsonC) < 0.005;
+  return Math.abs((r.alpha0 ?? 0) - alpha0) < 1e-9;
+}
 
 function clampNpop(value: number): number {
   const x = Number(value);
@@ -232,6 +357,64 @@ function impliedAlpha0(alpha: number, n: number): number {
 
 function impliedAlpha(alpha0: number, n: number): number {
   return Math.exp(logAlphaFromAlpha0(alpha0, n));
+}
+
+function clampSimpson(value: number): number {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return SIMPSON_DEFAULT;
+  return Math.min(SIMPSON_MAX, Math.max(SIMPSON_MIN, x));
+}
+
+function simpsonToSlider(c: number): number {
+  return Math.round(
+    SIMPSON_SLIDER_STEPS * ((c - SIMPSON_MIN) / (SIMPSON_MAX - SIMPSON_MIN)),
+  );
+}
+
+function sliderToSimpson(t: number): number {
+  return clampSimpson(
+    SIMPSON_MIN + (Number(t) / SIMPSON_SLIDER_STEPS) * (SIMPSON_MAX - SIMPSON_MIN),
+  );
+}
+
+/** Lower bound 1/K: Dirichlet E[Σ x_g²] → 1/K as α → ∞. */
+function simpsonFloor(n: number): number {
+  if (n >= 50) return 0;
+  return 2 ** -n;
+}
+
+function expectedSimpson(alpha: number, n: number, logAlpha?: number): number {
+  const la =
+    logAlpha !== undefined && Number.isFinite(logAlpha)
+      ? logAlpha
+      : Math.log(alpha);
+  if (!Number.isFinite(la)) return NaN;
+  const alpha0 = Math.exp(la + n * Math.LN2);
+  const a = Math.exp(la);
+  if (!Number.isFinite(alpha0)) return 0;
+  if (!(a > 0) || !Number.isFinite(a)) return 1 / (alpha0 + 1);
+  return (a + 1) / (alpha0 + 1);
+}
+
+/**
+ * α(K) = (1−c)/(cK − 1) so E[S(X)] = c exactly on Dirichlet(α,…,α), K=2ⁿ.
+ */
+function alphaFromSimpson(
+  c: number,
+  n: number,
+): { ok: true; logAlpha: number; alpha: number; alpha0: number } | { ok: false } {
+  const floor = simpsonFloor(n);
+  if (!(c > floor && c < 1)) return { ok: false };
+  if (n >= 50) {
+    const logAlpha = Math.log(1 - c) - Math.log(c) - n * Math.LN2;
+    return { ok: true, logAlpha, alpha: Math.exp(logAlpha), alpha0: (1 - c) / c };
+  }
+  const K = 2 ** n;
+  const den = c * K - 1;
+  if (den <= 0) return { ok: false };
+  const a = (1 - c) / den;
+  if (!(a > 0) || !Number.isFinite(a)) return { ok: false };
+  return { ok: true, logAlpha: Math.log(a), alpha: a, alpha0: K * a };
 }
 
 function mulberry32(seed: number): () => number {
@@ -409,6 +592,73 @@ function boltzmannMaint(
     meanW: eW,
     F,
   };
+}
+
+function isArrowKey(key: string): boolean {
+  return (
+    key === "ArrowLeft" ||
+    key === "ArrowRight" ||
+    key === "ArrowUp" ||
+    key === "ArrowDown"
+  );
+}
+
+function arrowDelta(key: string, shift: boolean, step: number): number {
+  const dir = key === "ArrowRight" || key === "ArrowUp" ? 1 : -1;
+  return dir * step * (shift ? 10 : 1);
+}
+
+function bump(value: number, min: number, max: number, delta: number): number {
+  return Math.min(max, Math.max(min, value + delta));
+}
+
+function ArmRange({
+  id,
+  armed,
+  setArmed,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+  label,
+  accent,
+  width = 220,
+}: {
+  id: string;
+  armed: string;
+  setArmed: (id: string) => void;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (v: number) => void;
+  label: string;
+  accent: string;
+  width?: number;
+}) {
+  return (
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e: { currentTarget: { value: string } }) =>
+        onChange(Number(e.currentTarget.value))
+      }
+      onPointerDown={() => setArmed(id)}
+      onFocus={() => setArmed(id)}
+      aria-label={label}
+      style={{
+        width,
+        accentColor: accent,
+        cursor: "pointer",
+        outline: armed === id ? `2px solid ${accent}` : "none",
+        outlineOffset: 3,
+      }}
+    />
+  );
 }
 
 function BoltzmannReadout({ boltz }: { boltz: BoltzResult }) {
@@ -934,13 +1184,18 @@ export default function PolygenicMaintenanceEfficiency() {
   const [npopRaw, setNpop] = useCanvasState("popN", NPOP_DEFAULT);
   const [alphaRaw, setAlpha] = useCanvasState("dirichletAlpha", ALPHA_DEFAULT);
   const [alpha0Raw, setAlpha0] = useCanvasState("dirichletAlpha0", ALPHA0_DEFAULT);
+  const [simpsonRaw, setSimpson] = useCanvasState("simpsonC", SIMPSON_DEFAULT);
+  const [lever, setLever] = useCanvasState("kbdLever", "n");
+  const [demoId, setDemoId] = useCanvasState("demoRegime", "default-c");
   const n = clampN(nRaw);
   const vs = clampVs(vsRaw);
   const zStar = clamp01(zStarRaw);
   const npop = clampNpop(npopRaw);
   const alpha = clampAlpha(alphaRaw);
   const alpha0 = clampAlpha0(alpha0Raw);
+  const simpsonC = clampSimpson(simpsonRaw);
   const sEq = sFromVs(vs);
+  const simpsonAlpha = alphaFromSimpson(simpsonC, n);
   const boltz = useMemo(
     () => boltzmannMaint(n, vs, zStar, npop, Math.log(alpha), 1),
     [n, vs, zStar, npop, alpha],
@@ -950,11 +1205,51 @@ export default function PolygenicMaintenanceEfficiency() {
       boltzmannMaint(n, vs, zStar, npop, logAlphaFromAlpha0(alpha0, n), 2),
     [n, vs, zStar, npop, alpha0],
   );
+  const boltzC = useMemo(() => {
+    const spec = alphaFromSimpson(simpsonC, n);
+    return spec.ok
+      ? boltzmannMaint(n, vs, zStar, npop, spec.logAlpha, 3)
+      : null;
+  }, [n, vs, zStar, npop, simpsonC]);
   const a0Implied = impliedAlpha0(alpha, n);
   const aImplied = impliedAlpha(alpha0, n);
+  const simpsonFromAlpha = expectedSimpson(alpha, n);
+  const simpsonFromAlpha0 = expectedSimpson(aImplied, n);
   const nGen = 2 ** n;
   const mid = binomial(n, Math.floor(n / 2));
   const nEdges = n * 2 ** (n - 1);
+  const accent = theme.accent.primary;
+  const demo = DEMO_REGIMES.find((r) => r.id === demoId) ?? DEMO_REGIMES[0];
+  const demoBoltz = demo.scaling === "c" ? boltzC : boltz0;
+
+  useEffect(() => {
+    const onKey = (e: { key: string; shiftKey: boolean; preventDefault: () => void }) => {
+      if (!isArrowKey(e.key)) return;
+      e.preventDefault();
+      const d = (step: number) => arrowDelta(e.key, e.shiftKey, step);
+      if (lever === "n") {
+        setN(sliderToN(bump(nToSlider(n), 0, SLIDER_STEPS, d(1))));
+      } else if (lever === "npop") {
+        setNpop(bump(npop, NPOP_MIN, NPOP_MAX, d(1)));
+      } else if (lever === "vs") {
+        setVs(sliderToVs(bump(vsToSlider(vs), 0, VS_SLIDER_STEPS, d(1))));
+      } else if (lever === "zStar") {
+        setZStar(bump(zStar, 0, 1, d(0.05)));
+      } else if (lever === "alpha") {
+        setAlpha(sliderToAlpha(bump(alphaToSlider(alpha), 0, ALPHA_SLIDER_STEPS, d(1))));
+      } else if (lever === "alpha0") {
+        setAlpha0(
+          sliderToAlpha0(bump(alpha0ToSlider(alpha0), 0, ALPHA0_SLIDER_STEPS, d(1))),
+        );
+      } else if (lever === "c") {
+        setSimpson(
+          sliderToSimpson(bump(simpsonToSlider(simpsonC), 0, SIMPSON_SLIDER_STEPS, d(1))),
+        );
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [lever, n, npop, vs, zStar, alpha, alpha0, simpsonC]);
 
   return (
     <Stack gap={24}>
@@ -970,7 +1265,115 @@ export default function PolygenicMaintenanceEfficiency() {
           trait being encoded by more loci rather than fewer — once the
           phenotype and the selective environment are held fixed?
         </Text>
+        <Text tone="secondary" size="small">
+          Click a slider to arm it (colored outline), then ←/→ or ↑/↓ to
+          step. Shift = 10×. Armed: {lever === "npop" ? "N" : lever === "zStar" ? "z*" : lever === "vs" ? "Vs" : lever === "alpha" ? "α" : lever === "alpha0" ? "α₀" : lever === "c" ? "c" : "n"}.
+        </Text>
       </Stack>
+
+      <Card>
+        <CardHeader>Live demo — pick a rising-η regime</CardHeader>
+        <CardBody>
+          <Stack gap={12}>
+            <Text>
+              These are Boltzmann settings where η_maint increases with n.
+              Click one, then press → (n is armed) or the n pills. Live η
+              updates in the browser; the table is the offline Python sweep.
+            </Text>
+            <Row gap={6} wrap>
+              {DEMO_REGIMES.map((r) => (
+                <Pill
+                  key={r.id}
+                  size="sm"
+                  active={demoMatches(r, npop, vs, zStar, simpsonC, alpha0)}
+                  onClick={() => {
+                    setN(r.n);
+                    setNpop(r.npop);
+                    setVs(r.vs);
+                    setZStar(r.zStar);
+                    if (r.scaling === "c" && r.c != null) setSimpson(r.c);
+                    if (r.scaling === "alpha0" && r.alpha0 != null) setAlpha0(r.alpha0);
+                    setLever("n");
+                    setDemoId(r.id);
+                  }}
+                >
+                  {r.label}
+                </Pill>
+              ))}
+            </Row>
+            <Text tone="secondary" size="small">
+              {demo.hint} Scaling:{" "}
+              {demo.scaling === "c" ? "E[S]=c fixed" : "α₀ = Kα fixed"}.
+            </Text>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">n</Text>
+              <ArmRange
+                id="n"
+                armed={lever}
+                setArmed={setLever}
+                min={0}
+                max={SLIDER_STEPS}
+                step={1}
+                value={nToSlider(n)}
+                onChange={(v) => setN(sliderToN(v))}
+                label="Number of loci for live demo"
+                accent={accent}
+                width={260}
+              />
+              <Text weight="medium">{n}</Text>
+              <Row gap={4} align="center" wrap>
+                {DEMO_N_JUMPS.map((v) => (
+                  <Pill
+                    key={`demo-n-${v}`}
+                    size="sm"
+                    active={v === n}
+                    onClick={() => {
+                      setN(v);
+                      setLever("n");
+                    }}
+                  >
+                    {v}
+                  </Pill>
+                ))}
+              </Row>
+            </Row>
+            <Row gap={8} wrap>
+              <Stat value={String(n)} label="loci n" />
+              <Stat value={String(npop)} label="N" />
+              <Stat
+                value={vs >= 0.01 ? vs.toFixed(3) : vs.toFixed(4)}
+                label="Vs"
+              />
+              <Stat
+                value={
+                  demo.scaling === "c"
+                    ? simpsonC.toFixed(2)
+                    : formatSci(alpha0)
+                }
+                label={demo.scaling === "c" ? "c = E[S]" : "α₀"}
+              />
+              <Stat
+                value={
+                  demoBoltz && Number.isFinite(demoBoltz.eta)
+                    ? demoBoltz.eta.toFixed(2)
+                    : "—"
+                }
+                label="live η_maint"
+              />
+            </Row>
+            {demoBoltz ? <BoltzmannReadout boltz={demoBoltz} /> : null}
+            <Table
+              headers={["n", ...demo.sweep.map((p) => String(p.n))]}
+              rows={[
+                [
+                  "η (Python)",
+                  ...demo.sweep.map((p) => p.eta.toFixed(p.eta >= 100 ? 0 : 1)),
+                ],
+              ]}
+            />
+          </Stack>
+        </CardBody>
+      </Card>
 
       <Stack gap={10}>
         <H2>Information maintained by selection</H2>
@@ -1173,21 +1576,18 @@ export default function PolygenicMaintenanceEfficiency() {
           <Stack gap={14}>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">loci n</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="n"
+                armed={lever}
+                setArmed={setLever}
                 min={0}
                 max={SLIDER_STEPS}
                 step={1}
                 value={nToSlider(n)}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setN(sliderToN(Number(e.currentTarget.value)))
-                }
-                aria-label="Number of loci"
-                style={{
-                  width: 260,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={(v) => setN(sliderToN(v))}
+                label="Number of loci"
+                accent={accent}
+                width={260}
               />
               <Text weight="medium">{n}</Text>
               <Row gap={4} align="center" wrap>
@@ -1244,21 +1644,17 @@ export default function PolygenicMaintenanceEfficiency() {
           <Stack gap={14}>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">optimum z*</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="zStar"
+                armed={lever}
+                setArmed={setLever}
                 min={0}
                 max={1}
                 step={0.05}
                 value={zStar}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setZStar(Number(e.currentTarget.value))
-                }
-                aria-label="Fitness optimum z star"
-                style={{
-                  width: 220,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={setZStar}
+                label="Fitness optimum z star"
+                accent={accent}
               />
               <Text tone="secondary" size="small">
                 {zStar.toFixed(2)}
@@ -1266,21 +1662,17 @@ export default function PolygenicMaintenanceEfficiency() {
             </Row>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">width Vs</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="vs"
+                armed={lever}
+                setArmed={setLever}
                 min={0}
                 max={VS_SLIDER_STEPS}
                 step={1}
                 value={vsToSlider(vs)}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setVs(sliderToVs(Number(e.currentTarget.value)))
-                }
-                aria-label="Stabilizing selection width V s"
-                style={{
-                  width: 220,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={(v) => setVs(sliderToVs(v))}
+                label="Stabilizing selection width V s"
+                accent={accent}
               />
               <Text tone="secondary" size="small">
                 {vs >= 0.01 ? vs.toFixed(3) : vs.toFixed(4)}
@@ -1338,21 +1730,17 @@ export default function PolygenicMaintenanceEfficiency() {
             </Text>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">n</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="n"
+                armed={lever}
+                setArmed={setLever}
                 min={0}
                 max={SLIDER_STEPS}
                 step={1}
                 value={nToSlider(n)}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setN(sliderToN(Number(e.currentTarget.value)))
-                }
-                aria-label="Number of loci for Boltzmann"
-                style={{
-                  width: 220,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={(v) => setN(sliderToN(v))}
+                label="Number of loci for Boltzmann"
+                accent={accent}
               />
               <Text tone="secondary" size="small">
                 {n}
@@ -1372,21 +1760,17 @@ export default function PolygenicMaintenanceEfficiency() {
             </Row>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">N</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="npop"
+                armed={lever}
+                setArmed={setLever}
                 min={NPOP_MIN}
                 max={NPOP_MAX}
                 step={1}
                 value={npop}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setNpop(Number(e.currentTarget.value))
-                }
-                aria-label="Population size N"
-                style={{
-                  width: 220,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={setNpop}
+                label="Population size N"
+                accent={accent}
               />
               <Text tone="secondary" size="small">
                 {npop}
@@ -1394,21 +1778,17 @@ export default function PolygenicMaintenanceEfficiency() {
             </Row>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">α</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="alpha"
+                armed={lever}
+                setArmed={setLever}
                 min={0}
                 max={ALPHA_SLIDER_STEPS}
                 step={1}
                 value={alphaToSlider(alpha)}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setAlpha(sliderToAlpha(Number(e.currentTarget.value)))
-                }
-                aria-label="Dirichlet alpha"
-                style={{
-                  width: 220,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={(v) => setAlpha(sliderToAlpha(v))}
+                label="Dirichlet alpha"
+                accent={accent}
               />
               <Text tone="secondary" size="small">
                 {alpha.toFixed(2)}
@@ -1439,21 +1819,17 @@ export default function PolygenicMaintenanceEfficiency() {
             </Text>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">n</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="n"
+                armed={lever}
+                setArmed={setLever}
                 min={0}
                 max={SLIDER_STEPS}
                 step={1}
                 value={nToSlider(n)}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setN(sliderToN(Number(e.currentTarget.value)))
-                }
-                aria-label="Number of loci for fixed alpha0"
-                style={{
-                  width: 220,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={(v) => setN(sliderToN(v))}
+                label="Number of loci for fixed alpha0"
+                accent={accent}
               />
               <Text weight="medium">{n}</Text>
               <Row gap={4} align="center" wrap>
@@ -1471,21 +1847,17 @@ export default function PolygenicMaintenanceEfficiency() {
             </Row>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">{"α₀"}</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="alpha0"
+                armed={lever}
+                setArmed={setLever}
                 min={0}
                 max={ALPHA0_SLIDER_STEPS}
                 step={1}
                 value={alpha0ToSlider(alpha0)}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setAlpha0(sliderToAlpha0(Number(e.currentTarget.value)))
-                }
-                aria-label="Total Dirichlet concentration alpha 0"
-                style={{
-                  width: 220,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={(v) => setAlpha0(sliderToAlpha0(v))}
+                label="Total Dirichlet concentration alpha 0"
+                accent={accent}
               />
               <Text weight="medium">{formatSci(alpha0)}</Text>
               <Row gap={4} align="center" wrap>
@@ -1521,21 +1893,17 @@ export default function PolygenicMaintenanceEfficiency() {
             </Row>
             <Row gap={12} align="center" wrap>
               <Text weight="medium">N</Text>
-              <input
-                type="range"
+              <ArmRange
+                id="npop"
+                armed={lever}
+                setArmed={setLever}
                 min={NPOP_MIN}
                 max={NPOP_MAX}
                 step={1}
                 value={npop}
-                onChange={(e: { currentTarget: { value: string } }) =>
-                  setNpop(Number(e.currentTarget.value))
-                }
-                aria-label="Population size N for fixed alpha0"
-                style={{
-                  width: 220,
-                  accentColor: theme.accent.primary,
-                  cursor: "pointer",
-                }}
+                onChange={setNpop}
+                label="Population size N for fixed alpha0"
+                accent={accent}
               />
               <Text tone="secondary" size="small">
                 {npop}
@@ -1558,13 +1926,140 @@ export default function PolygenicMaintenanceEfficiency() {
         </CardBody>
       </Card>
 
+      <Card>
+        <CardHeader>{"Boltzmann η_maint — E[S] = c fixed"}</CardHeader>
+        <CardBody>
+          <Stack gap={14}>
+            <Text>
+              {"Simpson concentration of the neutral Dirichlet: E[S(X)] = E[Σ x_g²] = (α+1)/(Kα+1) = c,"}{" "}
+              with K = {formatPow2(n)}. Solve{" "}
+              {"α(K) = (1−c)/(cK − 1)"} so expected collision probability stays
+              exactly c while n (and K=2ⁿ) changes. Same n, N, Vs, z* as the
+              other tables. Need {"c > 1/K"} (otherwise α would be negative).
+            </Text>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">n</Text>
+              <ArmRange
+                id="n"
+                armed={lever}
+                setArmed={setLever}
+                min={0}
+                max={SLIDER_STEPS}
+                step={1}
+                value={nToSlider(n)}
+                onChange={(v) => setN(sliderToN(v))}
+                label="Number of loci for fixed Simpson c"
+                accent={accent}
+              />
+              <Text weight="medium">{n}</Text>
+              <Row gap={4} align="center" wrap>
+                {BOLTZMANN_N_JUMPS.map((v) => (
+                  <Pill
+                    key={`bc-${v}`}
+                    size="sm"
+                    active={v === n}
+                    onClick={() => setN(v)}
+                  >
+                    {v}
+                  </Pill>
+                ))}
+              </Row>
+            </Row>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">c</Text>
+              <ArmRange
+                id="c"
+                armed={lever}
+                setArmed={setLever}
+                min={0}
+                max={SIMPSON_SLIDER_STEPS}
+                step={1}
+                value={simpsonToSlider(simpsonC)}
+                onChange={(v) => setSimpson(sliderToSimpson(v))}
+                label="Target expected Simpson concentration c"
+                accent={accent}
+              />
+              <Text weight="medium">{simpsonC.toFixed(3)}</Text>
+              <Row gap={4} align="center" wrap>
+                {SIMPSON_JUMPS.map((v) => (
+                  <Pill
+                    key={`c-${v}`}
+                    size="sm"
+                    active={Math.abs(v - simpsonC) < 0.005}
+                    onClick={() => setSimpson(v)}
+                  >
+                    {v}
+                  </Pill>
+                ))}
+                <Pill
+                  size="sm"
+                  onClick={() =>
+                    Number.isFinite(simpsonFromAlpha) &&
+                    setSimpson(clampSimpson(simpsonFromAlpha))
+                  }
+                >
+                  from α
+                </Pill>
+              </Row>
+            </Row>
+            <Row gap={8} wrap>
+              <Stat value={String(n)} label="loci n" />
+              <Stat value={formatPow2(n)} label="K = 2ⁿ" />
+              <Stat
+                value={simpsonAlpha.ok ? formatSci(simpsonAlpha.alpha) : "—"}
+                label="α(K) = (1−c)/(cK−1)"
+              />
+              <Stat
+                value={simpsonAlpha.ok ? formatSci(simpsonAlpha.alpha0) : "—"}
+                label="α₀ = Kα"
+              />
+            </Row>
+            <Row gap={12} align="center" wrap>
+              <Text weight="medium">N</Text>
+              <ArmRange
+                id="npop"
+                armed={lever}
+                setArmed={setLever}
+                min={NPOP_MIN}
+                max={NPOP_MAX}
+                step={1}
+                value={npop}
+                onChange={setNpop}
+                label="Population size N for fixed Simpson c"
+                accent={accent}
+              />
+              <Text tone="secondary" size="small">
+                {npop}
+              </Text>
+            </Row>
+            {simpsonAlpha.ok && boltzC ? (
+              <BoltzmannReadout boltz={boltzC} />
+            ) : (
+              <Text tone="secondary">
+                {"c must exceed 1/K = "}
+                {formatSci(simpsonFloor(n))}
+                {" at this n. Raise c or n."}
+              </Text>
+            )}
+            <Text tone="secondary" size="small">
+              Larger c means a more clumped neutral (mass on fewer genotypes);
+              smaller c is closer to the flat center 1/K. As K→∞ at fixed c,{" "}
+              {"α₀ → (1−c)/c"} — same large-n limit as holding a particular α₀,
+              but exact at finite K. Default c=0.3 works from n=2 (needs{" "}
+              {"c > 1/4"}).
+            </Text>
+          </Stack>
+        </CardBody>
+      </Card>
+
       <Stack gap={8}>
-        <H3>Both scalings at this n</H3>
+        <H3>Three “same neutral” scalings at this n</H3>
         <Table
           headers={[
             "scaling",
             "α",
             "α₀ = Kα",
+            "E[S]",
             "D bits",
             "⟨C⟩_*",
             "η_maint",
@@ -1576,6 +2071,7 @@ export default function PolygenicMaintenanceEfficiency() {
               "α fixed",
               formatSci(alpha),
               formatSci(a0Implied),
+              formatSci(simpsonFromAlpha),
               boltz ? boltz.D.toFixed(3) : "—",
               boltz ? boltz.C.toFixed(4) : "—",
               boltz && Number.isFinite(boltz.eta) ? boltz.eta.toFixed(3) : "—",
@@ -1586,6 +2082,7 @@ export default function PolygenicMaintenanceEfficiency() {
               "α₀ fixed",
               formatSci(aImplied),
               formatSci(alpha0),
+              formatSci(simpsonFromAlpha0),
               boltz0 ? boltz0.D.toFixed(3) : "—",
               boltz0 ? boltz0.C.toFixed(4) : "—",
               boltz0 && Number.isFinite(boltz0.eta)
@@ -1594,12 +2091,26 @@ export default function PolygenicMaintenanceEfficiency() {
               boltz0 ? boltz0.F.toFixed(4) : "—",
               boltz0 ? boltz0.ess.toFixed(1) : "—",
             ],
+            [
+              "E[S]=c",
+              simpsonAlpha.ok ? formatSci(simpsonAlpha.alpha) : "—",
+              simpsonAlpha.ok ? formatSci(simpsonAlpha.alpha0) : "—",
+              simpsonC.toFixed(3),
+              boltzC ? boltzC.D.toFixed(3) : "—",
+              boltzC ? boltzC.C.toFixed(4) : "—",
+              boltzC && Number.isFinite(boltzC.eta)
+                ? boltzC.eta.toFixed(3)
+                : "—",
+              boltzC ? boltzC.F.toFixed(4) : "—",
+              boltzC ? boltzC.ess.toFixed(1) : "—",
+            ],
           ]}
           striped
         />
         <Text tone="secondary" size="small">
-          Same n, N, Vs, z*. Neither scaling makes the neutrals identical —
-          only the total Dirichlet concentration is matched in the second row.
+          Same n, N, Vs, z*. Three readings of a “comparable” neutral: per-type
+          α, total concentration α₀, or expected Simpson c. None makes the
+          measures identical — the simplex dimension still changes.
         </Text>
         <Callout tone="info" title="A regime where η rises with n">
           Hold α₀ fixed and small. On even n (so a genotype sits at z*=0.5):
@@ -1608,6 +2119,29 @@ export default function PolygenicMaintenanceEfficiency() {
           α₀=32 is near-flat. Large α₀ kills the rise: the Dirichlet is too
           concentrated for selection to reweight. Odd n dips because no type
           has z exactly 0.5.
+        </Callout>
+        <Callout tone="info" title="Same pattern at fixed E[S] = c">
+          Grid over c in 0.26–0.75, N in 10–100, Vs in 0.008–1, z* in
+          {"{0.5, 0.25}"}, even n=4…16. Among 215 valid cells (ESS≥8), 212
+          have η(16)/η(4) above 1.05. The n-gain is almost the default
+          under this scaling — larger c (more clumped neutral) and moderate
+          N×1/Vs steepen it; ESS collapse at large N and tiny Vs is the
+          main skip. Poster cell: c=0.75, N=100, Vs=0.0625, z*=0.5 gives
+          η ≈ 25.6, 37.9, 59.4, 77.8, 116.5 at n=4,6,8,12,16 (ratio 4.55).
+          Default canvas c=0.3, N=50, Vs=0.0625 is already rising:
+          η ≈ 7.1 to 20.7.
+        </Callout>
+        <Callout tone="info" title="The n-gain continues past n=16, then slows">
+          Same c-fixed Boltzmann, even n out to 1000 Hamming layers (K=2ⁿ
+          never sampled). Default c=0.3, N=50, Vs=0.0625: η ≈ 7.2, 18.8,
+          27.5, 36, 38 at n=4, 16, 64, 256, 1000. Poster c=0.75, N=100,
+          Vs=0.0625 keeps climbing: 27, 103, 206, 375, 597. On a 24-cell
+          grid (c×N at this Vs, z*=0.5), all 24 have η(1000)/η(16) above
+          1.05; 23 still rise from 256 to 1000. D and ⟨C⟩ both fall toward
+          0; ⟨C⟩ falls faster, so η keeps increasing. Weak selection
+          (Vs=1) is nearly flat after n≈64. Past n~256 the ratio is a
+          pair of tiny numbers — wiggles there are Monte Carlo, not a
+          turnover.
         </Callout>
       </Stack>
 
