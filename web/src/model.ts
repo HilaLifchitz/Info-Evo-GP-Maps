@@ -296,8 +296,8 @@ export const DEMO_REGIMES: DemoRegime[] = [
   },
   {
     id: "strong",
-    label: "stronger selection",
-    hint: "c=0.3, Vs=0.02. Rise continues through n=1000.",
+    label: "narrower peak Vs=0.02",
+    hint: "Same c=0.3, N=50 as default, but Vs=0.02 instead of 0.0625 — a tighter fitness hill (stronger stabilizing selection). Rise continues through n=1000.",
     scaling: "c",
     n: 4,
     npop: 50,
@@ -496,8 +496,16 @@ function sampleLayerDirichlet(
   return x;
 }
 
+/** p log₂(p/q). Zero if p is numerically 0. Every KL and C(x) uses this base. */
+function klTerm2(p: number, q: number): number {
+  if (p <= 1e-18) return 0;
+  return p * Math.log2(p / Math.max(q, 1e-300));
+}
+
 export type BoltzResult = {
+  /** D_KL(ψ* ‖ φ*) in bits (log₂). */
   D: number;
+  /** ⟨C⟩_* in bits; C(x) = D_KL(x′ ‖ x) with log₂. */
   C: number;
   eta: number;
   ess: number;
@@ -505,6 +513,14 @@ export type BoltzResult = {
   meanLogW: number;
   meanW: number;
   F: number;
+  /** Neutral individual-trait masses P_φ(Z=k/n) = C(n,k)/2^n. */
+  phiZ: number[];
+  /** Selected individual-trait masses P_ψ(Z=k/n) = E_ψ[X_k]. */
+  psiZ: number[];
+  meanZPhi: number;
+  meanZPsi: number;
+  /** D_KL(ψ^Z ‖ φ^Z) in bits. */
+  klZ: number;
 };
 
 /** Hamming-layer Dirichlet Boltzmann. Exact for W, C, D, F, η when ω=ω(k). */
@@ -533,20 +549,23 @@ export function boltzmannMaint(
   const logTilt = new Array<number>(samples);
   const meanFit = new Array<number>(samples);
   const C = new Array<number>(samples);
+  const layerMass = new Array<number[]>(samples);
   let maxLt = -Infinity;
   for (let s = 0; s < samples; s++) {
     const x = sampleLayerDirichlet(n, logAlpha, logB, rng);
+    layerMass[s] = x;
     let W = 0;
     for (let k = 0; k < layers; k++) W += x[k] * omega[k];
     W = Math.max(W, 1e-300);
     meanFit[s] = W;
-    const lt = 2 * Npop * Math.log(W);
+    const lt = 2 * Npop * Math.log(W); // nats for W^{2N}; KL is reported in bits
     logTilt[s] = lt;
     if (lt > maxLt) maxLt = lt;
     let cost = 0;
     for (let k = 0; k < layers; k++) {
       const r = Math.max(omega[k] / W, 1e-300);
-      cost += x[k] * r * Math.log2(r);
+      const xp = x[k] * r;
+      cost += klTerm2(xp, Math.max(x[k], 1e-300));
     }
     C[s] = cost;
   }
@@ -558,16 +577,33 @@ export function boltzmannMaint(
   let eLogTilt = 0;
   let eC = 0;
   let eW = 0;
+  const psiZ = new Array<number>(layers).fill(0);
+  const phiZ = new Array<number>(layers);
+  const logK = n * Math.LN2;
+  for (let k = 0; k < layers; k++) phiZ[k] = Math.exp(logB[k] - logK);
   for (let s = 0; s < samples; s++) {
     const ps = Math.exp(logTilt[s] - maxLt) / sumExp;
     essInv += ps * ps;
     eLogTilt += ps * logTilt[s];
     eC += ps * C[s];
     eW += ps * meanFit[s];
+    const x = layerMass[s];
+    for (let k = 0; k < layers; k++) psiZ[k] += ps * x[k];
+  }
+  let meanZPhi = 0;
+  let meanZPsi = 0;
+  let klZ = 0;
+  for (let k = 0; k < layers; k++) {
+    const z = k / n;
+    meanZPhi += phiZ[k] * z;
+    meanZPsi += psiZ[k] * z;
+    const p = Math.max(psiZ[k], 0);
+    const q = Math.max(phiZ[k], 1e-300);
+    klZ += klTerm2(p, q);
   }
   const logZ = maxLt + Math.log(sumExp / samples);
   const twoN = 2 * Npop;
-  const Dbits = (eLogTilt - logZ) / Math.LN2;
+  const Dbits = (eLogTilt - logZ) / Math.LN2; // D_KL(ψ* ‖ φ*) in bits = nats / ln 2
   const meanLogW = eLogTilt / twoN;
   const F = logZ / twoN;
   const eta = eC > 1e-18 ? Dbits / (twoN * eC) : NaN;
@@ -580,6 +616,11 @@ export function boltzmannMaint(
     meanLogW,
     meanW: eW,
     F,
+    phiZ,
+    psiZ,
+    meanZPhi,
+    meanZPsi,
+    klZ,
   };
 }
 

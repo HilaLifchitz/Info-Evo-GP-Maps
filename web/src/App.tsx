@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ColorBar, FitnessColorBar, FitnessProfile, HasseDiagram } from "./HasseDiagram";
+import { ColorBar, FitnessColorBar, FitnessProfile, HasseDiagram, TraitDistPlot } from "./HasseDiagram";
 import {
   ALPHA0_DEFAULT,
   ALPHA0_JUMPS,
@@ -124,6 +124,9 @@ function ArmRange({
       onChange={(e) => onChange(Number(e.currentTarget.value))}
       onPointerDown={() => setArmed(id)}
       onFocus={() => setArmed(id)}
+      onKeyDown={(e) => {
+        if (isArrowKey(e.key)) e.preventDefault();
+      }}
       aria-label={label}
       style={width ? { width } : undefined}
     />
@@ -139,6 +142,7 @@ function BoltzmannReadout({ boltz }: { boltz: BoltzResult }) {
         <Stat
           value={Number.isFinite(boltz.eta) ? boltz.eta.toFixed(3) : "—"}
           label="η_maint = D/(2N⟨C⟩)"
+          tone="danger"
         />
         <Stat value={boltz.ess.toFixed(1)} label="ESS" />
       </Row>
@@ -228,11 +232,12 @@ export default function App() {
             information at equilibrium. Said differently: Is there an
             advantage, in equilibrium maintenance efficiency, to a trait being
             encoded by more loci rather than fewer — once the phenotype and
-            the selective environment are held fixed?
+            the selective environment are held fixed? A live rising-η
+            demonstration is at the bottom of the page.
           </Text>
           <Text tone="secondary" size="small">
-            Click a slider to arm it (outline), then ←/→ or ↑/↓ to step.
-            Shift = 10×. Armed:{" "}
+            Click any slider or pill to arm it (outline), then ←/→ or ↑/↓
+            to step that lever. Shift = 10×. Armed:{" "}
             {lever === "npop"
               ? "N"
               : lever === "zStar"
@@ -250,105 +255,6 @@ export default function App() {
           </Text>
         </Stack>
 
-        <Card>
-          <CardHeader>Live demo — pick a rising-η regime</CardHeader>
-          <CardBody>
-            <Stack gap={12}>
-              <Text>
-                These are Boltzmann settings where η_maint increases with n.
-                Click one, then press → (n is armed) or the n pills. Live η
-                updates in the browser; the table is the offline Python sweep.
-              </Text>
-              <Row gap={6} wrap>
-                {DEMO_REGIMES.map((r) => (
-                  <Pill
-                    key={r.id}
-                    active={demoMatches(r, npop, vs, zz, simpsonC, alpha0)}
-                    onClick={() => {
-                      setN(r.n);
-                      setNpop(r.npop);
-                      setVs(r.vs);
-                      setZStar(r.zStar);
-                      if (r.scaling === "c" && r.c != null) setSimpson(r.c);
-                      if (r.scaling === "alpha0" && r.alpha0 != null) setAlpha0(r.alpha0);
-                      setLever("n");
-                      setDemoId(r.id);
-                    }}
-                  >
-                    {r.label}
-                  </Pill>
-                ))}
-              </Row>
-              <Text tone="secondary" size="small">
-                {demo.hint} Scaling:{" "}
-                {demo.scaling === "c" ? "E[S]=c fixed" : "α₀ = Kα fixed"}.
-              </Text>
-              <Row gap={12} wrap>
-                <span className="label">n</span>
-                <ArmRange
-                  id="n"
-                  armed={lever}
-                  setArmed={setLever}
-                  min={0}
-                  max={SLIDER_STEPS}
-                  step={1}
-                  value={nToSlider(nn)}
-                  onChange={(v) => setN(sliderToN(v))}
-                  label="Number of loci for live demo"
-                  width={260}
-                />
-                <strong>{nn}</strong>
-                <Row gap={4} wrap>
-                  {DEMO_N_JUMPS.map((v) => (
-                    <Pill
-                      key={`demo-n-${v}`}
-                      active={v === nn}
-                      onClick={() => {
-                        setN(v);
-                        setLever("n");
-                      }}
-                    >
-                      {v}
-                    </Pill>
-                  ))}
-                </Row>
-              </Row>
-              <Row gap={8} wrap>
-                <Stat value={String(nn)} label="loci n" />
-                <Stat value={String(npop)} label="N" />
-                <Stat
-                  value={vs >= 0.01 ? vs.toFixed(3) : vs.toFixed(4)}
-                  label="Vs"
-                />
-                <Stat
-                  value={
-                    demo.scaling === "c" ? simpsonC.toFixed(2) : formatSci(alpha0)
-                  }
-                  label={demo.scaling === "c" ? "c = E[S]" : "α₀"}
-                />
-                <Stat
-                  value={
-                    demoBoltz && Number.isFinite(demoBoltz.eta)
-                      ? demoBoltz.eta.toFixed(2)
-                      : "—"
-                  }
-                  label="live η_maint"
-                />
-              </Row>
-              {demoBoltz ? <BoltzmannReadout boltz={demoBoltz} /> : null}
-              <Table
-                headers={["n", ...demo.sweep.map((p) => String(p.n))]}
-                rows={[
-                  [
-                    "η (Python)",
-                    ...demo.sweep.map((p) => p.eta.toFixed(p.eta >= 100 ? 0 : 1)),
-                  ],
-                ]}
-              />
-            </Stack>
-          </CardBody>
-        </Card>
-
         <Stack gap={10}>
           <H2>Information maintained by selection</H2>
           <Text>
@@ -360,7 +266,7 @@ export default function App() {
           </Text>
           <TeX
             name="dkl"
-            label="D_KL of psi^X given phi^{X-star} equals the integral of psi^X log psi^X over phi^{X-star}"
+            label="D_KL of psi^X given phi^{X-star} equals the integral of psi^X log_2 of psi^X over phi^{X-star}"
           />
           <Text>
             The second argument is always the neutral equilibrium. Selection
@@ -423,7 +329,7 @@ export default function App() {
           </Text>
           <TeX
             name="cost"
-            label="x-prime_g equals x_g omega(g) over x dot omega. C(x) equals D_KL of x-prime given x equals sum_g x-prime_g log x-prime_g over x_g"
+            label="x-prime_g equals x_g omega(g) over x dot omega. C(x) equals D_KL of x-prime given x equals sum_g x-prime_g log_2 of x-prime_g over x_g"
           />
           <Text>
             Here, (x · ω) is the mean fitness of the population. The cost
@@ -541,7 +447,10 @@ export default function App() {
                 <strong>{nn}</strong>
                 <Row gap={4} wrap>
                   {N_JUMPS.map((v) => (
-                    <Pill key={v} active={v === nn} onClick={() => setN(v)}>
+                    <Pill key={v} active={v === nn} onClick={() => {
+                        setN(v);
+                        setLever("n");
+                      }}>
                       {v}
                     </Pill>
                   ))}
@@ -626,6 +535,364 @@ export default function App() {
           </CardBody>
         </Card>
 
+        <Stack gap={10}>
+          <H2>Trait distributions</H2>
+          <Text>
+            The lattices above are the encoding and the fitness sitting on it.
+            Equilibria live on the genotype-frequency simplex; the trait
+            distributions are those measures after the GP map. That is the
+            right order: first φ* and ψ* on genotypes, then the induced laws
+            of the individual trait on [0, 1].
+          </Text>
+          <Text>
+            The recipe is almost: pick α and N, form the two simplex measures,
+            push forward by z_n. Two small corrections. (1) You also need n,
+            Vs, and z* — n is the encoding, and (Vs, z*) are the fitness hill
+            already set above. (2) N enters only the selected measure, as the
+            Boltzmann tilt. Neutral φ* does not use N. Mean Dirichlet
+            frequencies are uniform, so the neutral individual-trait law does
+            not even depend on α. Alpha shapes how much x fluctuates around
+            that mean, not the mean itself. Selection can reweight those
+            fluctuations — but only if they still exist.
+          </Text>
+        </Stack>
+
+        <Card>
+          <CardHeader>From simplex equilibria to the trait</CardHeader>
+          <CardBody>
+            <Stack gap={14}>
+              <Text>
+                Neutral Wright–Dirichlet on genotype frequencies x = (x_g),
+                K = 2^n types:
+              </Text>
+              <TeX
+                name="phiStar"
+                label="phi-star of dx is proportional to the product over g of x_g to the alpha minus 1, dx"
+              />
+              <Text tone="secondary" size="small">
+                Dirichlet(α, …, α) on the simplex. No N.
+              </Text>
+              <Text>
+                Selected Boltzmann equilibrium — same Dirichlet, tilted by
+                mean fitness:
+              </Text>
+              <TeX
+                name="psiStar"
+                label="psi-star of dx is proportional to W(x) to the 2N times the product over g of x_g to the alpha minus 1, dx"
+              />
+              <TeX
+                name="meanWx"
+                label="W(x) equals the sum over g of x_g omega(g)"
+              />
+              <Text>
+                GP map, then the trait of a random individual in a random
+                equilibrium population:
+              </Text>
+              <TeX
+                name="phiZmass"
+                label="phi^Z of k over n equals the expected layer mass under phi, which is binomial n k over 2^n"
+              />
+              <TeX
+                name="psiZmass"
+                label="psi^Z of k over n equals the expected layer mass under psi"
+              />
+              <Text>
+                Information about the trait, relative to the same neutral
+                trait law. By the data-processing inequality this cannot
+                exceed the genotype-level D:
+              </Text>
+              <TeX
+                name="dklZ"
+                label="D_KL of psi^Z given phi^Z equals the sum over k of psi^Z of k/n log_2 of psi^Z over phi^Z"
+              />
+              <Row gap={12} wrap>
+                <span className="label">n</span>
+                <ArmRange
+                  id="n"
+                  armed={lever}
+                  setArmed={setLever}
+                  min={0}
+                  max={SLIDER_STEPS}
+                  step={1}
+                  value={nToSlider(nn)}
+                  onChange={(v) => setN(sliderToN(v))}
+                  label="Number of loci for trait distributions"
+                />
+                <span className="muted">{nn}</span>
+                <Row gap={4} wrap>
+                  {BOLTZMANN_N_JUMPS.map((v) => (
+                    <Pill
+                      key={`tz-n-${v}`}
+                      active={v === nn}
+                      onClick={() => {
+                        setN(v);
+                        setLever("n");
+                      }}
+                    >
+                      {v}
+                    </Pill>
+                  ))}
+                </Row>
+              </Row>
+              <Row gap={12} wrap>
+                <span className="label">N</span>
+                <ArmRange
+                  id="npop"
+                  armed={lever}
+                  setArmed={setLever}
+                  min={NPOP_MIN}
+                  max={NPOP_MAX}
+                  step={1}
+                  value={npop}
+                  onChange={setNpop}
+                  label="Population size N for trait distributions"
+                />
+                <span className="muted">{npop}</span>
+                <span className="label">α</span>
+                <ArmRange
+                  id="alpha"
+                  armed={lever}
+                  setArmed={setLever}
+                  min={0}
+                  max={ALPHA_SLIDER_STEPS}
+                  step={1}
+                  value={alphaToSlider(alpha)}
+                  onChange={(v) => setAlpha(sliderToAlpha(v))}
+                  label="Dirichlet alpha for trait distributions"
+                />
+                <span className="muted">{alpha.toFixed(2)}</span>
+              </Row>
+              <Row gap={8} wrap>
+                <Stat
+                  value={boltz ? boltz.klZ.toFixed(3) : "—"}
+                  label="D_KL(ψ^Z ‖ φ^Z) bits"
+                  tone="danger"
+                />
+                <Stat
+                  value={boltz ? boltz.D.toFixed(3) : "—"}
+                  label="D_KL(ψ* ‖ φ*) bits"
+                />
+                <Stat
+                  value={boltz ? boltz.meanZPhi.toFixed(3) : "—"}
+                  label="E_φ[Z]"
+                />
+                <Stat
+                  value={boltz ? boltz.meanZPsi.toFixed(3) : "—"}
+                  label="E_ψ[Z]"
+                />
+                <Stat value={zz.toFixed(2)} label="optimum z*" />
+                <Stat value={String(nn)} label="loci n" />
+                <Stat value={String(npop)} label="N" />
+                <Stat value={alpha.toFixed(2)} label="α" />
+                <Stat
+                  value={formatSci(a0Implied)}
+                  label={"α₀ = 2ⁿ α  (neutral stickiness)"}
+                />
+              </Row>
+              {boltz ? (
+                <div className="viz">
+                  <TraitDistPlot n={nn} zStar={zz} phiZ={boltz.phiZ} psiZ={boltz.psiZ} />
+                </div>
+              ) : null}
+              <Callout title="Why selection seems to do nothing at large n">
+                This box holds α fixed. Neutral is Dirichlet(α,…,α) on K = 2ⁿ
+                types, so total concentration α₀ = 2ⁿ α. That number is the
+                stickiness of the neutral: it is already 16α at n=4, and
+                2¹⁰⁰ α at n=100. Typical x is then glued to equal genotype
+                frequencies 1/K. Every random population has the same Hamming
+                layer masses — the binomial — and therefore the same mean
+                fitness W. The Boltzmann factor {"W^{2N}"} becomes a constant,
+                so it cannot reweight anything. ψ* = φ* for the trait, and
+                you see the binomial twice. N and Vs are still on; they have
+                nothing left to grab. To let selection move the trait law
+                you must shrink α as n grows (hold α₀ or E[S]=c), so some
+                populations can still clump on fit genotypes.
+              </Callout>
+              <Text tone="secondary" size="small">
+                Dashed grey: φ^Z. Solid accent: ψ^Z. Legend numbers are peak
+                heights (mass on the modal layer), not locations. Vertical
+                dashed: z*.
+              </Text>
+            </Stack>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader>{"Trait laws at fixed Simpson c"}</CardHeader>
+          <CardBody>
+            <Stack gap={14}>
+              <Text>
+                Same φ* / ψ* / GP map as the box above, but the neutral is
+                now held at a fixed expected Simpson concentration. That is
+                a different reading of “the same” Dirichlet as n grows: keep
+                the typical collision probability of genotype frequencies,
+                not the per-type α.
+              </Text>
+              <TeX
+                name="simpsonDef"
+                label="Expected Simpson S(X) equals expected sum of x_g squared equals (alpha plus 1) over (K alpha plus 1) equals c"
+              />
+              <Text>
+                Solve for the per-type concentration that realises this c
+                on K = 2^n types:
+              </Text>
+              <TeX
+                name="alphaFromC"
+                label="alpha of K equals (1 minus c) over (c K minus 1), with K = 2^n"
+              />
+              <Text tone="secondary" size="small">
+                Need c &gt; 1/K, otherwise α would be negative. Larger c is
+                a more clumped neutral (mass on fewer genotypes). As n
+                grows at fixed c, α shrinks as 1/K, so populations can
+                still clump and W can still vary — selection has something
+                to reweight. The large-n limit of the total concentration
+                is finite:
+              </Text>
+              <TeX
+                name="alpha0cLim"
+                label="K alpha, which is alpha_0, tends to (1 minus c) over c as K to infinity"
+              />
+              <Row gap={12} wrap>
+                <span className="label">n</span>
+                <ArmRange
+                  id="n"
+                  armed={lever}
+                  setArmed={setLever}
+                  min={0}
+                  max={SLIDER_STEPS}
+                  step={1}
+                  value={nToSlider(nn)}
+                  onChange={(v) => setN(sliderToN(v))}
+                  label="Number of loci for Simpson trait distributions"
+                />
+                <span className="muted">{nn}</span>
+                <Row gap={4} wrap>
+                  {BOLTZMANN_N_JUMPS.map((v) => (
+                    <Pill
+                      key={`tzc-n-${v}`}
+                      active={v === nn}
+                      onClick={() => {
+                        setN(v);
+                        setLever("n");
+                      }}
+                    >
+                      {v}
+                    </Pill>
+                  ))}
+                </Row>
+              </Row>
+              <Row gap={12} wrap>
+                <span className="label">N</span>
+                <ArmRange
+                  id="npop"
+                  armed={lever}
+                  setArmed={setLever}
+                  min={NPOP_MIN}
+                  max={NPOP_MAX}
+                  step={1}
+                  value={npop}
+                  onChange={setNpop}
+                  label="Population size N for Simpson trait distributions"
+                />
+                <span className="muted">{npop}</span>
+                <span className="label">c</span>
+                <ArmRange
+                  id="c"
+                  armed={lever}
+                  setArmed={setLever}
+                  min={0}
+                  max={SIMPSON_SLIDER_STEPS}
+                  step={1}
+                  value={simpsonToSlider(simpsonC)}
+                  onChange={(v) => setSimpson(sliderToSimpson(v))}
+                  label="Simpson concentration c for trait distributions"
+                />
+                <span className="muted">{simpsonC.toFixed(3)}</span>
+                <Row gap={4} wrap>
+                  {SIMPSON_JUMPS.map((v) => (
+                    <Pill
+                      key={`tzc-c-${v}`}
+                      active={Math.abs(v - simpsonC) < 0.005}
+                      onClick={() => {
+                        setSimpson(v);
+                        setLever("c");
+                      }}
+                    >
+                      {v}
+                    </Pill>
+                  ))}
+                </Row>
+              </Row>
+              <Row gap={8} wrap>
+                <Stat
+                  value={
+                    simpsonAlpha.ok && boltzC && Number.isFinite(boltzC.eta)
+                      ? boltzC.eta.toFixed(3)
+                      : "—"
+                  }
+                  label="η_maint = D/(2N⟨C⟩)"
+                  tone="danger"
+                />
+                <Stat
+                  value={simpsonAlpha.ok && boltzC ? boltzC.C.toFixed(4) : "—"}
+                  label="⟨C⟩_* bits"
+                />
+                <Stat
+                  value={simpsonAlpha.ok && boltzC ? boltzC.klZ.toFixed(3) : "—"}
+                  label="D_KL(ψ^Z ‖ φ^Z) bits"
+                />
+                <Stat
+                  value={simpsonAlpha.ok && boltzC ? boltzC.D.toFixed(3) : "—"}
+                  label="D_KL(ψ* ‖ φ*) bits"
+                />
+                <Stat
+                  value={
+                    simpsonAlpha.ok && boltzC ? boltzC.meanZPhi.toFixed(3) : "—"
+                  }
+                  label="E_φ[Z]"
+                />
+                <Stat
+                  value={
+                    simpsonAlpha.ok && boltzC ? boltzC.meanZPsi.toFixed(3) : "—"
+                  }
+                  label="E_ψ[Z]"
+                />
+                <Stat value={String(nn)} label="loci n" />
+                <Stat value={String(npop)} label="N" />
+                <Stat value={simpsonC.toFixed(3)} label="c = E[S]" />
+                <Stat
+                  value={simpsonAlpha.ok ? formatSci(simpsonAlpha.alpha) : "—"}
+                  label="α(K) from c"
+                />
+                <Stat
+                  value={simpsonAlpha.ok ? formatSci(simpsonAlpha.alpha0) : "—"}
+                  label="α₀ = Kα"
+                />
+              </Row>
+              {simpsonAlpha.ok && boltzC ? (
+                <div className="viz">
+                  <TraitDistPlot
+                    n={nn}
+                    zStar={zz}
+                    phiZ={boltzC.phiZ}
+                    psiZ={boltzC.psiZ}
+                  />
+                </div>
+              ) : (
+                <Text tone="secondary">
+                  c must exceed 1/K = {formatSci(simpsonFloor(nn))} at this n.
+                  Raise c or n.
+                </Text>
+              )}
+              <Text tone="secondary" size="small">
+                Same plot as above, now with α(n) chosen so E[S] stays at c.
+                Dashed grey: φ^Z. Solid accent: ψ^Z. Vertical dashed: z*.
+                Vs and z* come from the fitness lattice.
+              </Text>
+            </Stack>
+          </CardBody>
+        </Card>
+
         <Card>
           <CardHeader>Boltzmann η_maint — α fixed</CardHeader>
           <CardBody>
@@ -651,7 +918,10 @@ export default function App() {
                 <span className="muted">{nn}</span>
                 <Row gap={4} wrap>
                   {BOLTZMANN_N_JUMPS.map((v) => (
-                    <Pill key={`b-${v}`} active={v === nn} onClick={() => setN(v)}>
+                    <Pill key={`b-${v}`} active={v === nn} onClick={() => {
+                        setN(v);
+                        setLever("n");
+                      }}>
                       {v}
                     </Pill>
                   ))}
@@ -726,7 +996,10 @@ export default function App() {
                 <strong>{nn}</strong>
                 <Row gap={4} wrap>
                   {BOLTZMANN_N_JUMPS.map((v) => (
-                    <Pill key={`b0-${v}`} active={v === nn} onClick={() => setN(v)}>
+                    <Pill key={`b0-${v}`} active={v === nn} onClick={() => {
+                        setN(v);
+                        setLever("n");
+                      }}>
                       {v}
                     </Pill>
                   ))}
@@ -748,17 +1021,21 @@ export default function App() {
                 <strong>{formatSci(alpha0)}</strong>
                 <Row gap={4} wrap>
                   {ALPHA0_JUMPS.map((v) => (
-                    <Pill key={`a0-${v}`} active={v === alpha0} onClick={() => setAlpha0(v)}>
+                    <Pill key={`a0-${v}`} active={v === alpha0} onClick={() => {
+                      setAlpha0(v);
+                      setLever("alpha0");
+                    }}>
                       {v}
                     </Pill>
                   ))}
                   <Pill
                     active={Math.abs(alpha0 - a0Implied) / Math.max(alpha0, 1) < 0.02}
-                    onClick={() =>
+                    onClick={() => {
                       setAlpha0(
                         clampAlpha0(Number.isFinite(a0Implied) ? a0Implied : ALPHA0_DEFAULT),
-                      )
-                    }
+                      );
+                      setLever("alpha0");
+                    }}
                   >
                     = 2^n α
                   </Pill>
@@ -825,7 +1102,10 @@ export default function App() {
                 <strong>{nn}</strong>
                 <Row gap={4} wrap>
                   {BOLTZMANN_N_JUMPS.map((v) => (
-                    <Pill key={`bc-${v}`} active={v === nn} onClick={() => setN(v)}>
+                    <Pill key={`bc-${v}`} active={v === nn} onClick={() => {
+                        setN(v);
+                        setLever("n");
+                      }}>
                       {v}
                     </Pill>
                   ))}
@@ -850,16 +1130,21 @@ export default function App() {
                     <Pill
                       key={`c-${v}`}
                       active={Math.abs(v - simpsonC) < 0.005}
-                      onClick={() => setSimpson(v)}
+                      onClick={() => {
+                        setSimpson(v);
+                        setLever("c");
+                      }}
                     >
                       {v}
                     </Pill>
                   ))}
                   <Pill
-                    onClick={() =>
-                      Number.isFinite(simpsonFromAlpha) &&
-                      setSimpson(clampSimpson(simpsonFromAlpha))
-                    }
+                    onClick={() => {
+                      if (Number.isFinite(simpsonFromAlpha)) {
+                        setSimpson(clampSimpson(simpsonFromAlpha));
+                        setLever("c");
+                      }
+                    }}
                   >
                     from α
                   </Pill>
@@ -968,7 +1253,7 @@ export default function App() {
         <Callout title="A regime where η rises with n">
           Hold α₀ fixed and small, even n: α₀=4, N=50, Vs=0.0625. Or hold
           E[S]=c: c=0.75, N=100, Vs=0.0625 gives η ≈ 27 → 103 → 375 at
-          n=4, 16, 256. The live demo card at the top snaps to these.
+          n=4, 16, 256. The live demo card at the bottom snaps to these.
         </Callout>
 
         <Callout title="What this construction claims">
@@ -997,6 +1282,108 @@ export default function App() {
             still go in <code>web/public/data/</code>.
           </Text>
         </Stack>
+
+        <Card>
+          <CardHeader>Live demo — pick a rising-η regime</CardHeader>
+          <CardBody>
+            <Stack gap={12}>
+              <Text>
+                These are Boltzmann settings where η_maint increases with n.
+                Click one, then press → (n is armed) or the n pills. The red
+                number is live η_maint: the same D/(2N⟨C⟩) computed in this
+                page at the current n. The table is a precomputed Python sweep
+                of that formula, so the trend is visible without waiting.
+              </Text>
+              <Row gap={6} wrap>
+                {DEMO_REGIMES.map((r) => (
+                  <Pill
+                    key={r.id}
+                    active={demoMatches(r, npop, vs, zz, simpsonC, alpha0)}
+                    onClick={() => {
+                      setN(r.n);
+                      setNpop(r.npop);
+                      setVs(r.vs);
+                      setZStar(r.zStar);
+                      if (r.scaling === "c" && r.c != null) setSimpson(r.c);
+                      if (r.scaling === "alpha0" && r.alpha0 != null) setAlpha0(r.alpha0);
+                      setLever("n");
+                      setDemoId(r.id);
+                    }}
+                  >
+                    {r.label}
+                  </Pill>
+                ))}
+              </Row>
+              <Text tone="secondary" size="small">
+                {demo.hint} Scaling:{" "}
+                {demo.scaling === "c" ? "E[S]=c fixed" : "α₀ = Kα fixed"}.
+              </Text>
+              <Row gap={12} wrap>
+                <span className="label">n</span>
+                <ArmRange
+                  id="n"
+                  armed={lever}
+                  setArmed={setLever}
+                  min={0}
+                  max={SLIDER_STEPS}
+                  step={1}
+                  value={nToSlider(nn)}
+                  onChange={(v) => setN(sliderToN(v))}
+                  label="Number of loci for live demo"
+                  width={260}
+                />
+                <strong>{nn}</strong>
+                <Row gap={4} wrap>
+                  {DEMO_N_JUMPS.map((v) => (
+                    <Pill
+                      key={`demo-n-${v}`}
+                      active={v === nn}
+                      onClick={() => {
+                        setN(v);
+                        setLever("n");
+                      }}
+                    >
+                      {v}
+                    </Pill>
+                  ))}
+                </Row>
+              </Row>
+              <Row gap={8} wrap>
+                <Stat
+                  value={
+                    demoBoltz && Number.isFinite(demoBoltz.eta)
+                      ? demoBoltz.eta.toFixed(2)
+                      : "—"
+                  }
+                  label="live η_maint  (this n, in the browser)"
+                  tone="danger"
+                />
+                <Stat value={String(nn)} label="loci n" />
+                <Stat value={String(npop)} label="N" />
+                <Stat
+                  value={vs >= 0.01 ? vs.toFixed(3) : vs.toFixed(4)}
+                  label="Vs"
+                />
+                <Stat
+                  value={
+                    demo.scaling === "c" ? simpsonC.toFixed(2) : formatSci(alpha0)
+                  }
+                  label={demo.scaling === "c" ? "c = E[S]" : "α₀"}
+                />
+              </Row>
+              {demoBoltz ? <BoltzmannReadout boltz={demoBoltz} /> : null}
+              <Table
+                headers={["n", ...demo.sweep.map((p) => String(p.n))]}
+                rows={[
+                  [
+                    "η (Python)",
+                    ...demo.sweep.map((p) => p.eta.toFixed(p.eta >= 100 ? 0 : 1)),
+                  ],
+                ]}
+              />
+            </Stack>
+          </CardBody>
+        </Card>
 
         <Text tone="tertiary" size="small">
           Polygenic efficiency · public copy of the Cursor canvas. Lattice math

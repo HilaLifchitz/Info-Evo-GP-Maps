@@ -322,3 +322,202 @@ export function FitnessProfile({ vs, zStar }: { vs: number; zStar: number }) {
     </svg>
   );
 }
+
+function peakOf(y: number[]): number {
+  let m = 1e-12;
+  for (let i = 0; i < y.length; i++) if (y[i] > m) m = y[i];
+  return m;
+}
+
+function scaleToPeak(y: number[], peak: number): number[] {
+  const out = new Array<number>(y.length);
+  for (let i = 0; i < y.length; i++) out[i] = y[i] / peak;
+  return out;
+}
+
+function fmtPeak(x: number): string {
+  return x >= 0.01 ? x.toFixed(3) : x.toExponential(2);
+}
+
+function binTrait(
+  n: number,
+  phiZ: number[],
+  psiZ: number[],
+  maxBins: number,
+): { z: number[]; phi: number[]; psi: number[] } {
+  const m = n + 1;
+  if (m <= maxBins) {
+    const z = new Array<number>(m);
+    const phi = new Array<number>(m);
+    const psi = new Array<number>(m);
+    for (let k = 0; k < m; k++) {
+      z[k] = k / n;
+      phi[k] = phiZ[k] * n;
+      psi[k] = psiZ[k] * n;
+    }
+    return { z, phi, psi };
+  }
+  const z: number[] = [];
+  const phi: number[] = [];
+  const psi: number[] = [];
+  for (let i = 0; i < maxBins; i++) {
+    const k0 = Math.floor((i * m) / maxBins);
+    const k1 = Math.floor(((i + 1) * m) / maxBins);
+    const dk = k1 - k0;
+    if (dk <= 0) continue;
+    let p = 0;
+    let q = 0;
+    for (let k = k0; k < k1; k++) {
+      p += phiZ[k];
+      q += psiZ[k];
+    }
+    z.push((k0 + k1 - 1) / (2 * n));
+    phi.push((p * n) / dk);
+    psi.push((q * n) / dk);
+  }
+  return { z, phi, psi };
+}
+
+function polylinePts(
+  z: number[],
+  y: number[],
+  left: number,
+  top: number,
+  innerW: number,
+  innerH: number,
+  ymax: number,
+): string {
+  const pts: string[] = [];
+  for (let i = 0; i < z.length; i++) {
+    const x = left + z[i] * innerW;
+    const yy = top + (1 - y[i] / ymax) * innerH;
+    pts.push(`${x},${yy}`);
+  }
+  return pts.join(" ");
+}
+
+export function TraitDistPlot({
+  n,
+  zStar,
+  phiZ,
+  psiZ,
+}: {
+  n: number;
+  zStar: number;
+  phiZ: number[];
+  psiZ: number[];
+}) {
+  const bins = binTrait(n, phiZ, psiZ, 64);
+  const phiPeak = peakOf(phiZ);
+  const psiPeak = peakOf(psiZ);
+  const phiShape = scaleToPeak(bins.phi, peakOf(bins.phi));
+  const psiShape = scaleToPeak(bins.psi, peakOf(bins.psi));
+  const Wsvg = 720;
+  const H = 178;
+  const left = 40;
+  const right = 16;
+  const top = 26;
+  const bottom = 28;
+  const innerW = Wsvg - left - right;
+  const innerH = H - top - bottom;
+  const xStar = left + zStar * innerW;
+  const phiPts = polylinePts(bins.z, phiShape, left, top, innerW, innerH, 1);
+  const psiPts = polylinePts(bins.z, psiShape, left, top, innerW, innerH, 1);
+  const phiFill = `${left},${top + innerH} ${phiPts} ${left + innerW},${top + innerH}`;
+  const psiFill = `${left},${top + innerH} ${psiPts} ${left + innerW},${top + innerH}`;
+  return (
+    <svg
+      width="100%"
+      viewBox={`0 0 ${Wsvg} ${H}`}
+      role="img"
+      aria-label="Trait-distribution shapes, each curve scaled to its own peak"
+    >
+      <text x={left} y={12} fontSize={11} fill={text.secondary} fontFamily="inherit">
+        Shape of P(Z); each curve scaled to its own peak
+      </text>
+      <line
+        x1={left + innerW - 300}
+        y1={8}
+        x2={left + innerW - 276}
+        y2={8}
+        stroke={text.secondary}
+        strokeWidth={2}
+        strokeDasharray="5 4"
+      />
+      <text x={left + innerW - 272} y={12} fontSize={10} fill={text.secondary} fontFamily="inherit">
+        φ^Z peak height {fmtPeak(phiPeak)}
+      </text>
+      <line
+        x1={left + innerW - 138}
+        y1={8}
+        x2={left + innerW - 114}
+        y2={8}
+        stroke="var(--accent)"
+        strokeWidth={2}
+      />
+      <text x={left + innerW - 110} y={12} fontSize={10} fill={text.secondary} fontFamily="inherit">
+        ψ^Z peak height {fmtPeak(psiPeak)}
+      </text>
+      <polygon points={psiFill} fill="var(--accent)" opacity={0.2} />
+      <polygon points={phiFill} fill={text.tertiary} opacity={0.12} />
+      <polyline points={psiPts} fill="none" stroke="var(--accent)" strokeWidth={2} />
+      <polyline
+        points={phiPts}
+        fill="none"
+        stroke={text.secondary}
+        strokeWidth={2}
+        strokeDasharray="5 4"
+      />
+      {psiPeak / phiPeak < 1.08 && phiPeak / psiPeak < 1.08 ? (
+        <text
+          x={left + innerW / 2}
+          y={top + 16}
+          textAnchor="middle"
+          fontSize={10}
+          fill={text.secondary}
+          fontFamily="inherit"
+        >
+          ψ^Z ≈ φ^Z — selection is not moving the trait
+        </text>
+      ) : null}
+      <line x1={left} y1={top} x2={left} y2={top + innerH} stroke={stroke.tertiary} strokeWidth={0.8} />
+      <line
+        x1={left}
+        y1={top + innerH}
+        x2={left + innerW}
+        y2={top + innerH}
+        stroke={stroke.tertiary}
+        strokeWidth={0.8}
+      />
+      <line
+        x1={xStar}
+        y1={top}
+        x2={xStar}
+        y2={top + innerH}
+        stroke={stroke.primary}
+        strokeWidth={1}
+        strokeDasharray="3 3"
+        opacity={0.7}
+      />
+      <text x={4} y={top + 8} fontSize={9} fill={text.tertiary} fontFamily="inherit">
+        own peak
+      </text>
+      <text
+        x={xStar}
+        y={top + innerH + 14}
+        textAnchor="middle"
+        fontSize={10}
+        fill={text.secondary}
+        fontFamily="inherit"
+      >
+        z* = {zStar.toFixed(2)}
+      </text>
+      <text x={left} y={H - 2} fontSize={9} fill={text.tertiary} fontFamily="inherit">
+        z = 0
+      </text>
+      <text x={left + innerW} y={H - 2} textAnchor="end" fontSize={9} fill={text.tertiary} fontFamily="inherit">
+        z = 1
+      </text>
+    </svg>
+  );
+}

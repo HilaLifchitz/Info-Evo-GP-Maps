@@ -102,9 +102,17 @@ export function Pill({
   );
 }
 
-export function Stat({ value, label }: { value: string; label: string }) {
+export function Stat({
+  value,
+  label,
+  tone,
+}: {
+  value: string;
+  label: string;
+  tone?: "danger";
+}) {
   return (
-    <div className="stat">
+    <div className={`stat${tone === "danger" ? " stat-eta" : ""}`}>
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
     </div>

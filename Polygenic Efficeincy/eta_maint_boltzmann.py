@@ -87,11 +87,16 @@ def sample_layer_dirichlet(
 
 
 def cost_bits_rows(x: np.ndarray, omega: np.ndarray, eps: float = 1e-300) -> np.ndarray:
-    """C(x) in bits; x shape (B, K). Same as compare_sigma_dynamics.cost_per_state."""
+    """C(x) = D_KL(x′ ‖ x) in bits (log base 2); x shape (B, K).
+
+    x'_g = x_g ω(g)/(x·ω) = x_g r_g, so
+    C(x) = Σ_g x'_g log₂(x'_g / x_g) = Σ_g x_g r_g log₂(r_g).
+    """
     p = np.maximum(x, eps)
     wbar = np.maximum(p @ omega, eps)
     r = np.maximum(omega / wbar[:, None], eps)
-    return np.sum(p * r * np.log2(r), axis=1)
+    xp = p * r
+    return np.sum(xp * np.log2(np.maximum(xp, eps) / p), axis=1)
 
 
 def logmeanexp(a: np.ndarray) -> float:
@@ -190,7 +195,7 @@ def compute(
     w = np.exp(log_tilt - m)
     p_star = w / float(np.sum(w))
 
-    # D_KL(ρ*‖ρ_φ) in nats = E_*[2N log W] − log Z
+    # D_KL(ρ*‖ρ_φ) in bits (log₂): (E_*[2N ln W] − ln Z) / ln 2
     D_nats = float(np.sum(p_star * log_tilt) - logZ)
     D_bits = D_nats / math.log(2.0)
 
@@ -296,7 +301,7 @@ def main() -> None:
     print(f"  ⟨C⟩_*  = E_{{ρ*}}[C(x)]   = {res['mean_C_bits']:.6g} bits")
     print(f"  η_maint = D / (2 N ⟨C⟩_*) = {res['eta_maint']:.6g}   (k=2 from 2N in V)")
     print(f"  ⟨log W⟩_* = {res['mean_logW_star']:.6g} nats   ⟨W⟩_* = {res['mean_W_star']:.6g}")
-    print(f"  F* = ⟨log W⟩_* − D/(2N) = log Z/(2N) = {res['F_star']:.6g} nats")
+    print(f"  F* = ⟨ln W⟩_* − D_nats/(2N) = log Z/(2N) = {res['F_star']:.6g} nats")
     print(f"  E[z]_* = {res['mean_z_star']:.6g}")
     if args.out is not None:
         args.out.parent.mkdir(parents=True, exist_ok=True)
